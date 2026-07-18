@@ -26,3 +26,7 @@ Info.plist~
 *.tmp
 **/*.tmp
 
+
+# GUI build products
+src/gui/mSL.app/
+src/gui/mSL.prefPane/

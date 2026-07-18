@@ -14,12 +14,24 @@
  *     mslctl home sync           requires root
  */
 #include "msl.h"
+#include "msl_detect.h"
 #include "msl_home.h"
 #include "msl_media.h"
 #include "msl_mnt.h"
 
 #include <stdio.h>
 #include <string.h>
+
+/* One-line summary of a pseudo-filesystem we only observe. */
+static const char *
+describe(const struct msl_pseudofs *fs)
+{
+	if (fs->mounted)
+		return "mounted";
+	if (fs->installed)
+		return "installed, not mounted";
+	return "not installed";
+}
 
 static int
 home_status(void)
@@ -54,6 +66,64 @@ home_status(void)
 	else if (st.enabled && st.links < st.users)
 		printf("\n  note: %d account(s) have no /home entry. "
 		       "Run 'sudo mslctl home sync'.\n", st.users - st.links);
+
+	return 0;
+}
+
+/*
+ * Machine-readable state, one `key=value` per line.
+ *
+ * The GUI reads this rather than parsing the human-readable output above:
+ * status text is written to be read by people and will be reworded, whereas
+ * these keys are an interface. Keeping both in one tool means the GUI and the
+ * CLI can never report different things.
+ */
+static int
+porcelain(void)
+{
+	struct msl_home_status home;
+	struct msl_mnt_status mnt;
+	struct msl_media_status media;
+	struct msl_pseudofs proc, sys;
+
+	if (msl_home_status(&home) == 0) {
+		printf("home.enabled=%d\n", home.enabled);
+		printf("home.automounter=%d\n", home.automounter);
+		printf("home.masked=%d\n", home.masked);
+		printf("home.users=%d\n", home.users);
+		printf("home.links=%d\n", home.links);
+		printf("home.foreign=%d\n", home.foreign);
+	}
+
+	if (msl_mnt_status(&mnt) == 0) {
+		printf("mnt.enabled=%d\n", mnt.enabled);
+		printf("mnt.declared=%d\n", mnt.skel.declared);
+		printf("mnt.conflicting=%d\n", mnt.skel.conflicting);
+		printf("mnt.active=%d\n", mnt.skel.active);
+		printf("mnt.reboot_pending=%d\n", mnt.reboot_pending);
+	}
+
+	if (msl_media_status(&media) == 0) {
+		printf("media.enabled=%d\n", media.enabled);
+		printf("media.declared=%d\n", media.skel.declared);
+		printf("media.conflicting=%d\n", media.skel.conflicting);
+		printf("media.active=%d\n", media.skel.active);
+		printf("media.reboot_pending=%d\n", media.reboot_pending);
+		printf("media.user=%s\n", media.user);
+		printf("media.volumes=%d\n", media.volumes);
+		printf("media.links=%d\n", media.links);
+		printf("media.stale=%d\n", media.stale);
+	}
+
+	msl_detect_procfs(&proc);
+	msl_detect_sysfs(&sys);
+	printf("proc.installed=%d\n", proc.installed);
+	printf("proc.mounted=%d\n", proc.mounted);
+	printf("sys.installed=%d\n", sys.installed);
+	printf("sys.mounted=%d\n", sys.mounted);
+
+	printf("daemon.running=%d\n", msl_daemon_running());
+	printf("version=%s\n", MSL_VERSION);
 
 	return 0;
 }
@@ -227,7 +297,9 @@ usage(void)
 	    "  sync     reconcile with the current state  (root)\n"
 	    "\n"
 	    "media also supports:\n"
-	    "  list     show the removable volumes that would appear in /media\n");
+	    "  list     show the removable volumes that would appear in /media\n"
+	    "\n"
+	    "  porcelain  machine-readable state, one key=value per line\n");
 }
 
 int
@@ -238,8 +310,12 @@ main(int argc, char **argv)
 		return argc < 2 ? 2 : 0;
 	}
 
+	if (strcmp(argv[1], "porcelain") == 0)
+		return porcelain();
+
 	/* Bare `status` reports every component. */
 	if (strcmp(argv[1], "status") == 0) {
+		struct msl_pseudofs proc, sys;
 		int rc = home_status();
 		printf("\n");
 		if (mnt_status() != 0)
@@ -247,6 +323,14 @@ main(int argc, char **argv)
 		printf("\n");
 		if (media_status() != 0)
 			rc = 1;
+
+		msl_detect_procfs(&proc);
+		msl_detect_sysfs(&sys);
+		printf("\npseudo-filesystems (managed by their own projects)\n");
+		printf("  /proc        %s\n", describe(&proc));
+		printf("  /sys         %s\n", describe(&sys));
+		printf("\nmslxd        %s\n",
+		    msl_daemon_running() ? "running" : "not running");
 		return rc;
 	}
 

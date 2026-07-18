@@ -147,12 +147,18 @@ short-delay timer rather than reconciling immediately, so a burst collapses
 into one pass and the volume is never observed mid-mount before its path is
 set.
 
-The GUI performs no privileged work of its own. `procfsd`'s companion app prompts
-for administrator authorization per action, which is proportionate for three
-toggles; with a per-component matrix it would mean a password prompt per
-checkbox. Routing mutations through the daemon — which is already root — means
-one authorization at install and none afterward. The daemon validates every
-request rather than trusting its caller.
+Privileged actions go through the standard macOS administrator-authorization
+prompt, as procfs's companion app does. With a per-component matrix that would
+mean a prompt per checkbox, so the preference pane **batches**: pending changes
+are collected and applied in one authorized step.
+
+Routing mutations through the daemon instead — it is already root, so it could
+apply them without a prompt — was considered and rejected. It would mean a root
+process accepting reconfiguration commands over a socket, and any peer policy
+permissive enough to be convenient would also let anything running as the user
+silently remask `/etc/auto_master`. The prompt is not only an access check: it
+is what makes a change to the system visible and attributable to the person
+making it. `mslxd`'s command surface stays closed.
 
 ## Interface
 

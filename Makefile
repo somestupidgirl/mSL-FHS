@@ -36,6 +36,7 @@ CFLAGS   := $(ARCHFLAGS) -std=c11 -O2 -g \
             -I$(SRC)/include
 
 MSLCTL_SRCS := $(SRC)/common/msl_util.c \
+               $(SRC)/common/msl_detect.c \
                $(SRC)/skeleton/msl_skeleton.c \
                $(SRC)/home/msl_home.c \
                $(SRC)/mnt/msl_mnt.c \
@@ -50,6 +51,8 @@ MSLXD_SRCS  := $(SRC)/common/msl_util.c \
                $(SRC)/tools/mslxd.c
 MSLXD       := $(OUT)/mslxd
 
+APP_DIR      := /Applications
+PREFPANE_DIR := /Library/PreferencePanes
 DAEMON_PLIST := com.beako.mslxd.plist
 DAEMON_LABEL := com.beako.mslxd
 DAEMON_DIR   := /Library/LaunchDaemons
@@ -60,7 +63,7 @@ FRAMEWORKS  := -framework CoreFoundation \
                -framework DiskArbitration \
                -framework SystemConfiguration
 
-all: $(MSLCTL) $(MSLXD) $(OUT)/$(DAEMON_PLIST)
+all: $(MSLCTL) $(MSLXD) $(OUT)/$(DAEMON_PLIST) gui
 
 $(MSLCTL): $(MSLCTL_SRCS) $(wildcard $(SRC)/include/*.h) | $(OUT)
 	$(CC) $(CFLAGS) -o $@ $(MSLCTL_SRCS) $(FRAMEWORKS)
@@ -70,6 +73,12 @@ $(MSLXD): $(MSLXD_SRCS) $(wildcard $(SRC)/include/*.h) | $(OUT)
 
 $(OUT)/$(DAEMON_PLIST): $(SRC)/tools/$(DAEMON_PLIST) | $(OUT)
 	cp $< $@
+
+# Menu-bar app and preference pane.
+gui: | $(OUT)
+	$(MAKE) -C $(SRC)/gui
+	rm -rf $(OUT)/mSL.app $(OUT)/mSL.prefPane
+	mv $(SRC)/gui/mSL.app $(SRC)/gui/mSL.prefPane $(OUT)/
 
 $(OUT):
 	@mkdir -p $(OUT)
@@ -122,7 +131,22 @@ install: require-root require-built
 	-@launchctl enable system/$(DAEMON_LABEL) 2>/dev/null || true
 	-@launchctl bootout system/$(DAEMON_LABEL) 2>/dev/null || true
 	launchctl bootstrap system $(DAEMON_DIR)/$(DAEMON_PLIST)
-	@echo "mSL: installed mslctl and mslxd to $(SBIN_DIR); daemon started."
+	rm -rf $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
+	cp -R $(OUT)/mSL.app $(APP_DIR)/mSL.app
+	cp -R $(OUT)/mSL.prefPane $(PREFPANE_DIR)/mSL.prefPane
+	chown -R root:wheel $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
+	chmod -R 755 $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
+	@# Gatekeeper flags a quarantined bundle as damaged when it arrives via a
+	@# download; the build products are local, but the payload may not be.
+	-@xattr -dr com.apple.quarantine $(APP_DIR)/mSL.app 2>/dev/null || true
+	@# Launch the menu-bar app in the console user's session so its icon shows
+	@# immediately. Best-effort: root install hopping to the logged-in user.
+	-@u=$$(stat -f '%Su' /dev/console 2>/dev/null); \
+	  uid=$$(id -u "$$u" 2>/dev/null); \
+	  if [ -n "$$uid" ] && [ "$$u" != "root" ] && [ "$$u" != "loginwindow" ]; then \
+	      launchctl asuser "$$uid" sudo -u "$$u" open "$(APP_DIR)/mSL.app" >/dev/null 2>&1 || true; \
+	  fi
+	@echo "mSL: installed mslctl, mslxd, mSL.app and mSL.prefPane; daemon started."
 	@echo "mSL: nothing is enabled yet. To turn on the /home component:"
 	@echo "         sudo mslctl home check     # confirm it is safe"
 	@echo "         sudo mslctl home enable"
@@ -137,6 +161,7 @@ uninstall: require-root
 	-@[ -x $(SBIN_DIR)/mslctl ] && $(SBIN_DIR)/mslctl home disable  || true
 	rm -f $(DAEMON_DIR)/$(DAEMON_PLIST)
 	rm -f $(SBIN_DIR)/mslctl $(SBIN_DIR)/mslxd
+	rm -rf $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
 	rm -f /var/db/msl.home /var/db/msl.mnt /var/db/msl.media
 	@echo "mSL: uninstalled. /var/db/msl.auto_master.orig kept as a backup."
 
@@ -145,10 +170,11 @@ require-root:
 		{ echo "error: run as root (sudo make $(MAKECMDGOALS))"; exit 1; }
 
 require-built:
-	@[ -x "$(MSLCTL)" ] && [ -x "$(MSLXD)" ] || \
+	@[ -x "$(MSLCTL)" ] && [ -x "$(MSLXD)" ] && [ -d "$(OUT)/mSL.app" ] || \
 		{ echo "error: not built. Run 'make' first."; exit 1; }
 
 clean:
 	rm -rf $(OUT)
+	$(MAKE) -C $(SRC)/gui clean
 
-.PHONY: all check install uninstall require-root require-built clean
+.PHONY: all gui check install uninstall require-root require-built clean
