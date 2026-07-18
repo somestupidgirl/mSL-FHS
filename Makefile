@@ -118,6 +118,86 @@ check: | $(OUT)
 	@$(OUT)/test_media
 
 # ---------------------------------------------------------------------------
+# Distribution: a double-clickable installer (.pkg) and disk image (.dmg).
+# These stage and package the already-built artifacts; nothing is installed on
+# the build host, so no root is needed. The .pkg's postinstall does the system
+# setup at install time on the target machine.
+# ---------------------------------------------------------------------------
+
+PKG_ID   := com.beako.msl.pkg
+PKG_COMP := $(OUT)/msl-component.pkg
+PKG_OUT  := $(OUT)/mSL-XNU-$(VERSION).pkg
+DMG_OUT  := $(OUT)/mSL-XNU-$(VERSION).dmg
+
+pkg: all
+	@echo "==> Staging installer payload"
+	rm -rf $(OUT)/pkgroot $(OUT)/pkgres
+	install -d $(OUT)/pkgroot/usr/local/sbin \
+	           $(OUT)/pkgroot/Library/LaunchDaemons \
+	           $(OUT)/pkgroot/Applications \
+	           $(OUT)/pkgroot/Library/PreferencePanes
+	cp    $(MSLCTL) $(MSLXD)          $(OUT)/pkgroot/usr/local/sbin/
+	cp    $(OUT)/$(DAEMON_PLIST)      $(OUT)/pkgroot/Library/LaunchDaemons/
+	cp -R $(OUT)/mSL.app              $(OUT)/pkgroot/Applications/
+	cp -R $(OUT)/mSL.prefPane         $(OUT)/pkgroot/Library/PreferencePanes/
+	@# codesign and pkgbuild reject Finder-info and similar xattrs.
+	xattr -cr $(OUT)/pkgroot
+	@echo "==> Building component package"
+	pkgbuild --root $(OUT)/pkgroot --identifier $(PKG_ID) --version $(VERSION) \
+	         --scripts installer/scripts --ownership recommended \
+	         --component-plist installer/msl-component.plist \
+	         --install-location / $(PKG_COMP)
+	@echo "==> Building product archive"
+	mkdir -p $(OUT)/pkgres
+	cp installer/resources/welcome.html installer/resources/conclusion.html $(OUT)/pkgres/
+	cp LICENSE $(OUT)/pkgres/LICENSE
+	sed -e 's/__MSLVERSION__/$(VERSION)/g' installer/distribution.xml.in > $(OUT)/distribution.xml
+	productbuild --distribution $(OUT)/distribution.xml --package-path $(OUT) \
+	             --resources $(OUT)/pkgres $(PKG_OUT)
+	rm -rf $(PKG_COMP) $(OUT)/distribution.xml $(OUT)/pkgroot $(OUT)/pkgres
+	@echo "==> Built $(PKG_OUT)"
+
+dmg: pkg
+	@echo "==> Building disk image"
+	rm -f $(DMG_OUT)
+	rm -rf $(OUT)/dmg
+	mkdir -p $(OUT)/dmg
+	cp $(PKG_OUT) $(OUT)/dmg/
+	cp installer/resources/DMG-README.txt $(OUT)/dmg/README.txt
+	cp installer/uninstall.command "$(OUT)/dmg/Uninstall mSL.command"
+	chmod +x "$(OUT)/dmg/Uninstall mSL.command"
+	hdiutil create -volname "mSL-XNU $(VERSION)" -srcfolder $(OUT)/dmg \
+	               -ov -format UDZO $(DMG_OUT)
+	rm -rf $(OUT)/dmg
+	@echo "==> Built $(DMG_OUT)"
+
+# Distribution sanity check: a clean build of the installer artifacts, then
+# verify both were produced and that the package payload carries every
+# component. Catches a payload silently losing a binary far more reliably than
+# noticing it is missing after an install.
+distcheck:
+	@echo "==> Clean distribution build"
+	$(MAKE) clean
+	$(MAKE) dmg
+	@echo "==> Checking distribution artifacts"
+	@test -s "$(PKG_OUT)" || { echo "FAIL: $(PKG_OUT) missing or empty"; exit 1; }
+	@test -s "$(DMG_OUT)" || { echo "FAIL: $(DMG_OUT) missing or empty"; exit 1; }
+	@hdiutil imageinfo "$(DMG_OUT)" >/dev/null 2>&1 || \
+		{ echo "FAIL: $(DMG_OUT) is not a valid disk image"; exit 1; }
+	@echo "  ok  built $(notdir $(PKG_OUT)) and $(notdir $(DMG_OUT))"
+	@rm -rf $(OUT)/distcheck; pkgutil --expand "$(PKG_OUT)" $(OUT)/distcheck 2>/dev/null || \
+		{ echo "FAIL: cannot expand product archive"; exit 1; }
+	@bom=`find $(OUT)/distcheck -name Bom | head -1`; \
+	 test -n "$$bom" || { echo "FAIL: no component package (Bom) in archive"; exit 1; }; \
+	 for f in mslctl mslxd $(DAEMON_PLIST) mSL.app mSL.prefPane; do \
+	   lsbom "$$bom" 2>/dev/null | grep -q "$$f" || \
+	     { echo "FAIL: payload missing $$f"; rm -rf $(OUT)/distcheck; exit 1; }; \
+	   echo "  ok  payload: $$f"; \
+	 done
+	@rm -rf $(OUT)/distcheck
+	@echo "==> distcheck passed"
+
+# ---------------------------------------------------------------------------
 # Install / uninstall
 # ---------------------------------------------------------------------------
 
@@ -177,4 +257,4 @@ clean:
 	rm -rf $(OUT)
 	$(MAKE) -C $(SRC)/gui clean
 
-.PHONY: all gui check install uninstall require-root require-built clean
+.PHONY: all gui check pkg dmg distcheck install uninstall require-root require-built clean

@@ -1,0 +1,51 @@
+#!/bin/bash
+#
+# mSL/XNU installer postinstall.
+#
+# The payload - mslctl, mslxd, the LaunchDaemon plist, mSL.app and
+# mSL.prefPane - has already been laid down with root:wheel ownership. What is
+# left is the part that is not a file copy: starting the daemon and putting the
+# menu-bar app on screen.
+#
+# Note what this deliberately does NOT do: it does not enable any component.
+# Enabling /home masks a line in /etc/auto_master and disables a macOS feature;
+# enabling /mnt or /media edits /etc/synthetic.conf. Those are changes to system
+# configuration that affect login and the root directory, and an installer
+# making them silently - on a machine whose setup it has not inspected - would
+# be taking a decision that belongs to the person running it. Everything ships
+# off, and the preference pane turns things on.
+#
+set -e
+
+DAEMON=com.beako.mslxd
+PLIST=/Library/LaunchDaemons/com.beako.mslxd.plist
+APP=/Applications/mSL.app
+
+# Clear any stale `launchctl disable` override, which persists across boots and
+# would otherwise keep mslxd from ever starting.
+launchctl enable "system/$DAEMON" 2>/dev/null || true
+
+# Replace a running instance from an earlier version, then start.
+launchctl bootout "system/$DAEMON" 2>/dev/null || true
+launchctl bootstrap system "$PLIST" 2>/dev/null || true
+
+# The package is typically downloaded, so its payload inherits
+# com.apple.quarantine - which makes Gatekeeper report the app as damaged or
+# from an unverified developer. Strip it now the app is in place.
+if [ -d "$APP" ]; then
+    xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+fi
+
+# Show the menu-bar icon immediately. postinstall runs as root, so hop into the
+# logged-in user's GUI session. Best-effort: with nobody logged in (a remote or
+# automated install) this is skipped and the app starts at their next login.
+# Never fail the install over it.
+CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null || true)
+CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null || true)
+if [ -d "$APP" ] && [ -n "$CONSOLE_UID" ] && \
+   [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
+    launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "$APP" \
+        >/dev/null 2>&1 || true
+fi
+
+exit 0

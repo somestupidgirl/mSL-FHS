@@ -1,0 +1,19 @@
+<html><body style="font-family:-apple-system,sans-serif;font-size:12px">
+<p><b>mSL/XNU is installed, and nothing is enabled yet.</b></p>
+
+<p>Open <b>System Settings &rarr; mSL/XNU</b>, or use the menu-bar icon, and switch
+on the components you want. Flip as many as you like and press Apply: they are
+applied together, behind one authorization.</p>
+
+<p><code>/home</code> takes effect at once. <code>/mnt</code> and
+<code>/media</code> appear after a restart, because macOS creates root-level
+directories only at startup.</p>
+
+<p>From the command line, <code>mslctl status</code> shows the state of
+everything and <code>mslctl home check</code> reports whether <code>/home</code>
+is safe to enable on this machine.</p>
+
+<p>To remove mSL/XNU, run <b>Uninstall mSL.command</b> from the disk image. It
+switches every component off before removing anything, so the system is left as
+it was found.</p>
+</body></html>

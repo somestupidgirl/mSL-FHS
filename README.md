@@ -175,10 +175,52 @@ filesystem.
 
 - macOS 15 or later (Apple Silicon or Intel)
 - Administrator access for installation
-- **One reboot** to install the skeleton
+- **One reboot** before `/mnt` and `/media` appear
 
 No kernel extension, no Reduced Security, and no SIP changes are required for the
 layout layer. (The optional pseudo-filesystems have their own requirements.)
+
+## Installing
+
+From a release disk image, open the `.pkg` and follow the installer. From
+source:
+
+```sh
+make                # build everything into out/
+sudo make install   # install and start the daemon
+```
+
+Either way, **nothing is switched on by the install.** Enabling a component
+edits system configuration — `/home` masks a line in `/etc/auto_master`,
+`/mnt` and `/media` add entries to `/etc/synthetic.conf` — and an installer
+making changes that affect login, on a machine whose setup it has not
+inspected, would be taking a decision that belongs to the person running it.
+
+Turn components on in **System Settings → mSL/XNU**, or from the menu bar, or:
+
+```sh
+mslctl status       # what is on, and what state it is in
+mslctl home check   # is /home safe to enable on this machine?
+sudo mslctl home enable
+```
+
+`/home` applies immediately. `/mnt` and `/media` appear after a restart.
+
+To build a distributable installer:
+
+```sh
+make dmg        # out/mSL-XNU-<version>.dmg, containing the .pkg and uninstaller
+make distcheck  # clean build, then verify the payload carries every component
+```
+
+## Uninstalling
+
+`Uninstall mSL.command` from the disk image, or `sudo make uninstall` from
+source. Both switch every component off *before* removing anything — disabling
+is what restores `/etc/auto_master` and drops the `synthetic.conf` entries, so
+removing the tools first would strand the system with a masked automounter line
+and no supported way to restore it. A pristine copy of `/etc/auto_master` is
+kept at `/var/db/msl.auto_master.orig` regardless.
 
 ## Status
 
