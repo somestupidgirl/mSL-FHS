@@ -127,11 +127,25 @@ matching udisks2's naming rules, which is what `mslxd` does.
 
 `mslxd` is a root LaunchDaemon (`KeepAlive`), mirroring the `procfsd` design:
 
-- Restores per-component enable/disable state from `/var/db/msl.*` at boot
-- Maintains the `/home` symlink farm, following account creation and deletion
-- Subscribes to DiskArbitration callbacks and maintains `/media` as volumes
-  appear and disappear
-- Serves state queries and toggle requests to the GUI
+- Reconciles every enabled component at startup — the boot-time restore
+- Subscribes to DiskArbitration and keeps `/media` in step as volumes appear
+  and disappear
+- Follows the console user, so a login or fast user switch re-attributes
+  `/media`
+- Polls slowly (60s) for account changes, which nothing notifies on
+- Will serve state queries and toggle requests to the GUI
+
+It holds **no state of its own**. Every wakeup re-reads the system and
+reconciles, so a missed event is corrected by the next one rather than leaving
+the daemon permanently out of step, and `KeepAlive` restarting it is always
+safe. It also calls the same sync functions `mslctl` does, so the two can never
+disagree about what should exist.
+
+Mounting one volume produces several DiskArbitration callbacks — appeared, then
+description changes as the mount completes. Each schedules a single
+short-delay timer rather than reconciling immediately, so a burst collapses
+into one pass and the volume is never observed mid-mount before its path is
+set.
 
 The GUI performs no privileged work of its own. `procfsd`'s companion app prompts
 for administrator authorization per action, which is proportionate for three
@@ -166,11 +180,11 @@ Early. The design is settled; the implementation is not yet written.
 
 | Component | Status |
 |-----------|--------|
-| `/home` | **Working** — `mslctl home enable`, verified on macOS 26.5.2 (arm64) |
-| `/mnt` | Planned |
-| `/media` | Planned |
+| `/home` | **Working** — verified on macOS 26.5.2 (arm64) |
+| `/mnt` | **Working** — needs one reboot to appear |
+| `/media` | **Working** — needs one reboot to appear |
 | `mslctl` | **Working** — CLI control for the layer |
-| `mslxd` | Planned |
+| `mslxd` | **Built, not yet exercised** — boot restore and live volume tracking |
 | Menu bar app | Planned |
 | Preference pane | Planned |
 | `/proc` detection | Planned ([procfs](https://github.com/somestupidgirl/procfs_kext) exists and is mature) |

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  mslxd LaunchDaemon. Install to /Library/LaunchDaemons/com.beako.mslxd.plist
+  (owned root:wheel, mode 644), with mslxd at /usr/local/sbin/mslxd, then:
+      sudo launchctl bootstrap system /Library/LaunchDaemons/com.beako.mslxd.plist
+
+  mslxd restores the enabled components at boot and keeps /media in step with
+  the volumes that are actually mounted. It holds no state of its own, so
+  KeepAlive restarting it is always safe: it re-reads the world and reconciles.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.beako.mslxd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/sbin/mslxd</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/mslxd.log</string>
+</dict>
+</plist>
