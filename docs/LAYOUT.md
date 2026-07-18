@@ -209,8 +209,25 @@ A volume appears in `/media` only when **all** hold:
 | Is actually mounted | `VolumePath` is present |
 | Is not the boot volume | `VolumePath` is not `/` |
 
-Disk images mount as non-removable local volumes and are excluded, matching
-Linux, where a loopback-mounted image does not appear in `/media` either.
+**Disk images are admitted.** This was initially specified the other way round,
+on the assumption that macOS reports them as non-removable. It does not —
+verified by attaching one:
+
+```
+DADeviceModel    = "Disk Image"
+DADeviceProtocol = "Virtual Interface"
+DAMediaRemovable = 1
+DAMediaEjectable = 1
+```
+
+Admitting them is also the more faithful outcome. Mounting an ISO from a Linux
+file manager creates a udisks2 loop device and *does* appear at
+`/media/<user>/<label>`, so excluding them here would have diverged from Linux
+rather than matched it.
+
+Should they ever need excluding, `DADeviceProtocol` is `"Virtual Interface"` for
+image-backed volumes and names the real bus (`USB`, `Thunderbolt`, …) otherwise,
+which distinguishes them cleanly.
 
 ### Naming
 
@@ -220,11 +237,22 @@ for the same device:
 
 | Case | macOS | udisks2 / mSL/XNU |
 |------|-------|-------------------|
-| Space in name | `/Volumes/My Disk` | `My\x20Disk` |
-| `/` in name | shown as `:` in POSIX paths | percent/hex-escaped |
+| Space in name | `/Volumes/My Disk` | `My Disk` — **kept** |
+| `/` in name | shown as `:` in POSIX paths | `_` |
 | Duplicate labels | `UNTITLED`, `UNTITLED 1` | `UNTITLED`, `UNTITLED_1` |
-| No label | `Untitled` | filesystem UUID, or `disk` |
-| Leading `.` | permitted | escaped (must not be hidden) |
+| No label | `Untitled` | `disk` |
+| Leading `.` | permitted | `_` (must not be hidden) |
+| Control characters | permitted | stripped |
+
+Spaces being *kept* is worth stating, because escaping them looks tidier and an
+earlier draft of this document specified `\x20`. That was wrong: a WD drive
+labelled `My Passport` genuinely mounts at `/media/<user>/My Passport` on a
+Linux desktop, space and all.
+
+Beyond these rules, exact udisks2 parity is **unverified** — it would need
+checking against a real Linux desktop. The remaining cases (non-UTF-8 labels,
+exotic Unicode) are rare enough that guessing would add risk rather than
+fidelity, so the rules above are deliberately conservative.
 
 The symlink *target* is the real macOS path, spaces and all; only the name
 within `/media/<user>/` is sanitised. This keeps the link resolvable while the

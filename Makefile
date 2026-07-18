@@ -35,13 +35,24 @@ CFLAGS   := $(ARCHFLAGS) -std=c11 -O2 -g \
             -DMSL_VERSION=\"$(VERSION)\" \
             -I$(SRC)/include
 
-MSLCTL_SRCS := $(SRC)/common/msl_util.c $(SRC)/home/msl_home.c $(SRC)/tools/mslctl.c
+MSLCTL_SRCS := $(SRC)/common/msl_util.c \
+               $(SRC)/skeleton/msl_skeleton.c \
+               $(SRC)/home/msl_home.c \
+               $(SRC)/mnt/msl_mnt.c \
+               $(SRC)/media/msl_media.c \
+               $(SRC)/tools/mslctl.c
 MSLCTL      := $(OUT)/mslctl
+
+# /media reads device properties from DiskArbitration and the console user from
+# SystemConfiguration; neither has a POSIX equivalent on macOS.
+FRAMEWORKS  := -framework CoreFoundation \
+               -framework DiskArbitration \
+               -framework SystemConfiguration
 
 all: $(MSLCTL)
 
 $(MSLCTL): $(MSLCTL_SRCS) $(wildcard $(SRC)/include/*.h) | $(OUT)
-	$(CC) $(CFLAGS) -o $@ $(MSLCTL_SRCS)
+	$(CC) $(CFLAGS) -o $@ $(MSLCTL_SRCS) $(FRAMEWORKS)
 
 $(OUT):
 	@mkdir -p $(OUT)
@@ -64,8 +75,21 @@ check: | $(OUT)
 	    -DAUTO_HOME='"$(TESTDIR)/auto_home"' \
 	    -DAUTO_BACKUP='"$(TESTDIR)/auto_master.orig"' \
 	    -o $(OUT)/test_auto_master $(SRC)/common/msl_util.c tests/test_auto_master.c
+	$(CC) $(CFLAGS) -I$(SRC)/skeleton \
+	    -DSYNTHETIC_CONF='"$(TESTDIR)/synthetic.conf"' \
+	    -o $(OUT)/test_synthetic $(SRC)/common/msl_util.c tests/test_synthetic.c
+	$(CC) $(CFLAGS) -I$(SRC)/media \
+	    -DMEDIA_ROOT='"$(TESTDIR)/media"' \
+	    -o $(OUT)/test_media $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
+	    tests/test_media.c $(FRAMEWORKS)
 	@echo "==> auto_master rewrite tests"
 	@$(OUT)/test_auto_master
+	@echo
+	@echo "==> synthetic.conf rewrite tests"
+	@$(OUT)/test_synthetic
+	@echo
+	@echo "==> media label tests"
+	@$(OUT)/test_media
 
 # ---------------------------------------------------------------------------
 # Install / uninstall

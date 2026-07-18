@@ -15,6 +15,8 @@
  */
 #include "msl.h"
 #include "msl_home.h"
+#include "msl_media.h"
+#include "msl_mnt.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -57,6 +59,127 @@ home_status(void)
 }
 
 static int
+media_status(void)
+{
+	struct msl_media_status st;
+
+	if (msl_media_status(&st) != 0) {
+		msl_err("cannot read /media status");
+		return 1;
+	}
+
+	printf("/media\n");
+	printf("  state        %s\n", st.enabled ? "enabled" : "disabled");
+	printf("  declared     %s\n",
+	    st.skel.declared ? "yes, in /etc/synthetic.conf" : "no");
+	printf("  present      %s\n", st.skel.active ? "yes, /media exists" : "no");
+	printf("  console user %s\n", st.user[0] != '\0' ? st.user : "(none logged in)");
+	printf("  volumes      %d removable mounted\n", st.volumes);
+	printf("  links        %d%s", st.links, st.stale > 0 ? "" : "\n");
+	if (st.stale > 0)
+		printf(" (%d stale)\n", st.stale);
+
+	if (st.stale > 0)
+		printf("\n  note: %d link(s) point at volumes that are no longer mounted.\n"
+		       "        Run 'sudo mslctl media sync' to clear them. Until mslxd\n"
+		       "        watches for ejects, this is expected after unmounting.\n",
+		       st.stale);
+
+	if (st.skel.conflicting)
+		printf("\n  note: /etc/synthetic.conf declares 'media' but not as ours.\n"
+		       "        mSL will not modify it.\n");
+	else if (st.reboot_pending)
+		printf("\n  note: declared, but /media appears only after a reboot.\n"
+		       "        The symlinks below it are already in place.\n");
+	else if (st.enabled && st.user[0] == '\0')
+		printf("\n  note: no graphical session, so there is no user to attribute\n"
+		       "        mounts to. Existing links are left alone.\n");
+
+	return 0;
+}
+
+static int
+media_command(const char *verb)
+{
+	if (verb == NULL || strcmp(verb, "status") == 0)
+		return media_status();
+
+	if (strcmp(verb, "enable") == 0)
+		return msl_media_enable() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "disable") == 0)
+		return msl_media_disable() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "sync") == 0)
+		return msl_media_sync() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "list") == 0) {
+		struct msl_volume vols[64];
+		int n = msl_media_scan(vols, 64);
+
+		if (n < 0) {
+			msl_err("cannot enumerate volumes");
+			return 1;
+		}
+		if (n == 0) {
+			printf("no removable volumes mounted\n");
+			return 0;
+		}
+		for (int i = 0; i < n; i++)
+			printf("%-24s -> %s\n", vols[i].label, vols[i].path);
+		return 0;
+	}
+
+	msl_err("unknown command: media %s", verb);
+	return 2;
+}
+
+static int
+mnt_status(void)
+{
+	struct msl_mnt_status st;
+
+	if (msl_mnt_status(&st) != 0) {
+		msl_err("cannot read /mnt status");
+		return 1;
+	}
+
+	printf("/mnt\n");
+	printf("  state        %s\n", st.enabled ? "enabled" : "disabled");
+	printf("  declared     %s\n",
+	    st.skel.declared ? "yes, in /etc/synthetic.conf" : "no");
+	printf("  present      %s\n", st.skel.active ? "yes, /mnt exists" : "no");
+
+	if (st.skel.conflicting)
+		printf("\n  note: /etc/synthetic.conf declares 'mnt' but not as ours%s%s.\n"
+		       "        mSL will not modify it.\n",
+		       st.skel.target[0] != '\0' ? " -> " : "",
+		       st.skel.target[0] != '\0' ? st.skel.target : "");
+	else if (st.reboot_pending)
+		printf("\n  note: declared, but /mnt appears only after a reboot.\n");
+	else if (st.skel.active)
+		printf("\n  /mnt is empty, which is what it is on Linux. Nothing populates it.\n");
+
+	return 0;
+}
+
+static int
+mnt_command(const char *verb)
+{
+	if (verb == NULL || strcmp(verb, "status") == 0)
+		return mnt_status();
+
+	if (strcmp(verb, "enable") == 0)
+		return msl_mnt_enable() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "disable") == 0)
+		return msl_mnt_disable() == 0 ? 0 : 1;
+
+	msl_err("unknown command: mnt %s", verb);
+	return 2;
+}
+
+static int
 home_command(const char *verb)
 {
 	if (verb == NULL || strcmp(verb, "status") == 0)
@@ -93,13 +216,18 @@ usage(void)
 	    "\n"
 	    "components:\n"
 	    "  home     Linux-style /home/<user> paths for local accounts\n"
+	    "  mnt      /mnt, an empty directory (as on Linux)\n"
+	    "  media    /media/<user>/<label> for removable volumes\n"
 	    "\n"
 	    "commands:\n"
 	    "  status   show the current state (default)\n"
 	    "  check    report whether the component is safe to enable\n"
 	    "  enable   turn the component on           (root)\n"
 	    "  disable  turn the component off          (root)\n"
-	    "  sync     reconcile with the account list (root)\n");
+	    "  sync     reconcile with the current state  (root)\n"
+	    "\n"
+	    "media also supports:\n"
+	    "  list     show the removable volumes that would appear in /media\n");
 }
 
 int
@@ -110,11 +238,26 @@ main(int argc, char **argv)
 		return argc < 2 ? 2 : 0;
 	}
 
-	if (strcmp(argv[1], "status") == 0)
-		return home_status();
+	/* Bare `status` reports every component. */
+	if (strcmp(argv[1], "status") == 0) {
+		int rc = home_status();
+		printf("\n");
+		if (mnt_status() != 0)
+			rc = 1;
+		printf("\n");
+		if (media_status() != 0)
+			rc = 1;
+		return rc;
+	}
 
 	if (strcmp(argv[1], "home") == 0)
 		return home_command(argc > 2 ? argv[2] : NULL);
+
+	if (strcmp(argv[1], "mnt") == 0)
+		return mnt_command(argc > 2 ? argv[2] : NULL);
+
+	if (strcmp(argv[1], "media") == 0)
+		return media_command(argc > 2 ? argv[2] : NULL);
 
 	msl_err("unknown component: %s", argv[1]);
 	usage();
