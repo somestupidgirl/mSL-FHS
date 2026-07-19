@@ -141,7 +141,9 @@ struct MSLState {
             return links == users ? "\(links) of \(users) accounts"
                                   : "\(links) of \(users) accounts — needs sync"
         case .mnt:
-            return "No mount points detected"
+            let n = int("mnt.mounts")
+            return n == 0 ? "No mount points detected"
+                          : "\(n) mount point\(n == 1 ? "" : "s")"
         case .media:
             let stale = int("media.stale")
             if stale > 0 { return "\(int("media.links")) links, \(stale) stale" }
@@ -185,6 +187,24 @@ struct MSLState {
             return "Visibility locked: \(reason)"
         }
         return n.hidden ? "Hidden in the Finder" : "Visible in the Finder"
+    }
+
+    /// The status lines for a node's dropdown - usually one, but /mnt lists one
+    /// line per mounted filesystem when any are present.
+    func nodeDetailLines(_ n: NodeInfo) -> [String] {
+        if n.component == .mnt, int("mnt.mounts") > 0 {
+            return mntMounts.map { "\($0.name) mounted at \($0.path) \($0.fstype)" }
+        }
+        return [nodeDetail(n)]
+    }
+
+    /// Filesystems the administrator has mounted under /mnt.
+    var mntMounts: [(name: String, path: String, fstype: String)] {
+        (0 ..< int("mnt.mounts")).map { i in
+            (string("mnt.mount.\(i).name"),
+             string("mnt.mount.\(i).path"),
+             string("mnt.mount.\(i).fstype"))
+        }
     }
 
     /// Status of a pseudo-filesystem we only observe, never manage.

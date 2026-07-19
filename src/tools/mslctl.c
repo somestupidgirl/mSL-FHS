@@ -117,6 +117,16 @@ porcelain(void)
 		printf("mnt.conflicting=%d\n", mnt.skel.conflicting);
 		printf("mnt.active=%d\n", mnt.skel.active);
 		printf("mnt.reboot_pending=%d\n", mnt.reboot_pending);
+		printf("mnt.mounts=%d\n", mnt.mounts);
+
+		/* The mounts themselves, so the GUI can list them. */
+		struct msl_mnt_mount mm[64];
+		int nm = msl_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
+		for (int i = 0; i < nm; i++) {
+			printf("mnt.mount.%d.name=%s\n", i, mm[i].name);
+			printf("mnt.mount.%d.path=%s\n", i, mm[i].path);
+			printf("mnt.mount.%d.fstype=%s\n", i, mm[i].fstype);
+		}
 	}
 
 	if (msl_media_status(&media) == 0) {
@@ -263,6 +273,18 @@ mnt_status(void)
 	    st.skel.declared ? "yes, in /etc/synthetic.conf" : "no");
 	printf("  present      %s\n", st.skel.active ? "yes, /mnt exists" : "no");
 
+	if (st.mounts > 0) {
+		struct msl_mnt_mount mm[64];
+		int n = msl_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
+
+		printf("  mounts       %d\n", st.mounts);
+		for (int i = 0; i < n; i++)
+			printf("    %s mounted at %s %s\n",
+			    mm[i].name, mm[i].path, mm[i].fstype);
+	} else {
+		printf("  mounts       none\n");
+	}
+
 	if (st.skel.conflicting)
 		printf("\n  note: /etc/synthetic.conf declares 'mnt' but not as ours%s%s.\n"
 		       "        mSL will not modify it.\n",
@@ -270,8 +292,9 @@ mnt_status(void)
 		       st.skel.target[0] != '\0' ? st.skel.target : "");
 	else if (st.reboot_pending)
 		printf("\n  note: declared, but /mnt appears only after a reboot.\n");
-	else if (st.skel.active)
-		printf("\n  /mnt is empty, which is what it is on Linux. Nothing populates it.\n");
+	else if (st.skel.active && st.mounts == 0)
+		printf("\n  /mnt exists and is empty - ready for manual mounts,\n"
+		       "  as on Linux (mkdir /mnt/disk && mount ... /mnt/disk).\n");
 
 	return 0;
 }

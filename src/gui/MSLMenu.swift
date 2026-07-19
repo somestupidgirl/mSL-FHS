@@ -135,7 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         sub.addItem(.separator())
-        addDisabled(sub, state.nodeDetail(node))
+        for line in state.nodeDetailLines(node) {
+            addDisabled(sub, line)
+        }
 
         // Open in Finder, for anything that actually exists.
         if node.exists {

@@ -112,6 +112,9 @@ check: | $(OUT)
 	$(CC) $(CFLAGS) -I$(SRC)/visibility \
 	    -DTEST_SCRATCH='"$(TESTDIR)/vis"' \
 	    -o $(OUT)/test_visibility $(SRC)/common/msl_util.c tests/test_visibility.c
+	$(CC) $(CFLAGS) -I$(SRC)/mnt \
+	    -o $(OUT)/test_mnt $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
+	    tests/test_mnt.c
 	@echo "==> auto_master rewrite tests"
 	@$(OUT)/test_auto_master
 	@echo
@@ -123,6 +126,9 @@ check: | $(OUT)
 	@echo
 	@echo "==> visibility tests"
 	@$(OUT)/test_visibility
+	@echo
+	@echo "==> /mnt mount-matcher tests"
+	@$(OUT)/test_mnt
 
 # ---------------------------------------------------------------------------
 # Distribution: a double-clickable installer (.pkg) and disk image (.dmg).
