@@ -101,7 +101,8 @@ check: | $(OUT)
 	    -DAUTO_MASTER='"$(TESTDIR)/auto_master"' \
 	    -DAUTO_HOME='"$(TESTDIR)/auto_home"' \
 	    -DAUTO_BACKUP='"$(TESTDIR)/auto_master.orig"' \
-	    -o $(OUT)/test_auto_master $(SRC)/common/msl_util.c tests/test_auto_master.c
+	    -o $(OUT)/test_auto_master $(SRC)/common/msl_util.c \
+	    $(SRC)/skeleton/msl_skeleton.c tests/test_auto_master.c
 	$(CC) $(CFLAGS) -I$(SRC)/skeleton \
 	    -DSYNTHETIC_CONF='"$(TESTDIR)/synthetic.conf"' \
 	    -o $(OUT)/test_synthetic $(SRC)/common/msl_util.c tests/test_synthetic.c
@@ -222,8 +223,20 @@ install: require-root require-built
 	@# A prior `launchctl disable` persists across boots in the override store
 	@# and would otherwise keep mslxd from ever starting.
 	-@launchctl enable system/$(DAEMON_LABEL) 2>/dev/null || true
+	@# Replace any running instance. bootout is asynchronous: launchd returns
+	@# before the job is gone, and bootstrapping while the label is still known
+	@# fails with EIO (5). So wait for it to actually disappear, and if it
+	@# refuses to (a wedged job, or one launchd will not release), restart it in
+	@# place instead - kickstart re-execs the program, which is the freshly
+	@# installed binary at the same path.
 	-@launchctl bootout system/$(DAEMON_LABEL) 2>/dev/null || true
-	launchctl bootstrap system $(DAEMON_DIR)/$(DAEMON_PLIST)
+	-@for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
+		launchctl print system/$(DAEMON_LABEL) >/dev/null 2>&1 || break; \
+		sleep 0.25; \
+	done
+	@launchctl bootstrap system $(DAEMON_DIR)/$(DAEMON_PLIST) 2>/dev/null \
+		|| launchctl kickstart -k system/$(DAEMON_LABEL) \
+		|| { echo "error: could not start $(DAEMON_LABEL)"; exit 1; }
 	rm -rf $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
 	cp -R $(OUT)/mSL.app $(APP_DIR)/mSL.app
 	cp -R $(OUT)/mSL.prefPane $(PREFPANE_DIR)/mSL.prefPane

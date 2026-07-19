@@ -169,7 +169,17 @@ main(void)
 	check_lock("/bin",     MSL_VIS_SIP,         "SIP");
 	check_lock("/usr",     MSL_VIS_SIP,         "SIP");
 	check_lock("/var",     MSL_VIS_SIP,         "SIP");
-	check_lock("/home",    MSL_VIS_READONLY,    "read-only");
+	/*
+	 * /home is conditional. It exists only while something has created the
+	 * root-level entry - autofs, or our own synthetic.conf declaration after a
+	 * reboot - so it is either absent, or present and locked read-only because
+	 * a symlink at / lives on the sealed root. Asserting a single one of those
+	 * pins a state the system is entitled to change.
+	 */
+	if (msl_vis_status("/home", &st) == 0 && st.exists)
+		check_lock("/home", MSL_VIS_READONLY, "read-only");
+	else
+		check_lock("/home", MSL_VIS_ABSENT, "absent");
 	check_lock("/private", MSL_VIS_PROTECTED,   "protected");
 	check_lock("/dev",     MSL_VIS_UNSUPPORTED, "unsupported");
 	check_lock("/opt",     MSL_VIS_CHANGEABLE,  "changeable");

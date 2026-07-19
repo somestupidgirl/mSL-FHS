@@ -49,6 +49,9 @@ home_status(void)
 	printf("  automounter  %s\n",
 	    st.automounter ? "active (auto_home owns /home)" : "released");
 	printf("  auto_master  %s\n", st.masked ? "masked by mSL" : "unmodified");
+	printf("  synthetic    %s\n",
+	    st.skel.declared ? "declared in /etc/synthetic.conf" : "not declared");
+	printf("  present      %s\n", st.skel.active ? "yes, /home exists" : "no");
 	printf("  accounts     %d eligible\n", st.users);
 	printf("  links        %d\n", st.links);
 
@@ -60,7 +63,11 @@ home_status(void)
 	 * Report the states that are internally inconsistent, since they are what
 	 * a user is most likely to need help with.
 	 */
-	if (st.enabled && st.automounter)
+	if (st.enabled && st.reboot_pending)
+		printf("\n  note: /home is declared but not present. macOS creates\n"
+		       "        root-level entries only at startup, so it appears\n"
+		       "        after you restart. The symlinks below it are ready.\n");
+	else if (st.enabled && st.automounter)
 		printf("\n  note: enabled, but the automounter still owns %s.\n"
 		       "        Run 'sudo mslctl home enable' again, or reboot.\n",
 		       MSL_HOME_ROOT);
@@ -109,6 +116,9 @@ porcelain(void)
 		printf("home.users=%d\n", home.users);
 		printf("home.links=%d\n", home.links);
 		printf("home.foreign=%d\n", home.foreign);
+		printf("home.declared=%d\n", home.skel.declared);
+		printf("home.active=%d\n", home.skel.active);
+		printf("home.reboot_pending=%d\n", home.reboot_pending);
 	}
 
 	if (msl_mnt_status(&mnt) == 0) {

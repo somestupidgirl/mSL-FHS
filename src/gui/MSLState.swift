@@ -38,12 +38,13 @@ enum Component: String, CaseIterable {
     }
 
     /// Whether turning this on or off only takes effect after a restart.
-    var needsReboot: Bool {
-        // /home repurposes a directory macOS already provides, so it applies
-        // immediately. The other two need a root-level entry, which only
-        // /etc/synthetic.conf can create and only at boot.
-        self != .home
-    }
+    ///
+    /// All three need a root-level entry, which only /etc/synthetic.conf can
+    /// create and only at boot. /home was once thought to be an exception,
+    /// because macOS appears to provide it already - but that /home is created
+    /// by autofs from the auto_master line this component masks, so it is gone
+    /// at the next boot unless we declare our own.
+    var needsReboot: Bool { true }
 }
 
 /// Why a node's Finder visibility cannot be changed - mirrors the C enum's
@@ -110,7 +111,7 @@ struct MSLState {
 
     /// True when a component is on but not yet visible, pending a restart.
     func rebootPending(_ c: Component) -> Bool {
-        c == .home ? false : flag("\(c.rawValue).reboot_pending")
+        flag("\(c.rawValue).reboot_pending")
     }
 
     /// True when synthetic.conf declares the name but not as ours - we will

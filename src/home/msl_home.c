@@ -537,6 +537,9 @@ msl_home_status(struct msl_home_status *st)
 	st->masked      = is_masked();
 	st->automounter = automounted();
 
+	msl_skeleton_status(MSL_HOME_NAME, &st->skel);
+	st->reboot_pending = msl_skeleton_reboot_pending(MSL_HOME_NAME);
+
 	setpwent();
 	while ((pw = getpwent()) != NULL) {
 		if (eligible(pw))
@@ -579,6 +582,15 @@ msl_home_enable(void)
 		return -1;
 	}
 
+	/*
+	 * Declare our own /home first. The root-level entry is created at boot by
+	 * autofs from the very auto_master line we are about to mask, so without a
+	 * synthetic.conf entry of our own /home would simply not exist at the next
+	 * boot - see msl_home.h.
+	 */
+	if (msl_skeleton_add(MSL_HOME_NAME) < 0)
+		return -1;
+
 	rc = set_masked(true);
 	if (rc < 0)
 		return -1;
@@ -611,6 +623,15 @@ msl_home_enable(void)
 	if (msl_state_set(MSL_HOME_STATE, 1) != 0)
 		msl_err("warning: could not persist state: %s", strerror(errno));
 
+	/*
+	 * Whether /home is usable right now depends on whether autofs had already
+	 * created it this boot. If it had, it survives until shutdown and the
+	 * synthetic.conf entry takes over at the next start; if not, the entry is
+	 * the only thing that will create it, and that happens at boot.
+	 */
+	if (msl_skeleton_reboot_pending(MSL_HOME_NAME))
+		msl_log("/home will appear after the next reboot.");
+
 	return 0;
 }
 
@@ -626,6 +647,15 @@ msl_home_disable(void)
 
 	msl_log("removing symlinks from %s", MSL_HOME_ROOT);
 	prune(true);
+
+	/*
+	 * Withdraw our /home declaration before restoring the map, so that autofs
+	 * takes the name back at the next boot rather than the two both claiming
+	 * it. The Data-volume directory is left in place, as skeleton removal
+	 * always does: it is the automounter's mount point as well as ours.
+	 */
+	if (msl_skeleton_remove(MSL_HOME_NAME) < 0)
+		return -1;
 
 	rc = set_masked(false);
 	if (rc < 0)
@@ -645,6 +675,10 @@ msl_home_disable(void)
 int
 msl_home_sync(void)
 {
+	struct passwd *pw;
+	struct msl_home_status st;
+	int users = 0;
+
 	if (!msl_is_root()) {
 		msl_err("syncing /home requires root");
 		return -1;
@@ -658,7 +692,44 @@ msl_home_sync(void)
 		return -1;
 	}
 
+	/*
+	 * Count the eligible accounts before touching anything.
+	 *
+	 * An empty answer means "the directory service did not tell us", not "no
+	 * users exist". mslxd runs at boot and can start before opendirectoryd is
+	 * ready to answer, and in that window getpwent() yields nothing. Acting on
+	 * that would be destructive twice over: populate() would create no links,
+	 * and prune() would delete every link we already have, on the grounds that
+	 * no account matches them.
+	 *
+	 * So an empty enumeration is treated as unknown and the farm is left
+	 * exactly as it is. A later reconcile, once the directory service answers,
+	 * puts things right.
+	 */
+	setpwent();
+	while ((pw = getpwent()) != NULL) {
+		if (eligible(pw))
+			users++;
+	}
+	endpwent();
+
+	if (users == 0) {
+		msl_log("/home: no local accounts visible yet "
+		    "(directory service not ready?); leaving it untouched");
+		return 0;
+	}
+
 	populate();
 	prune(false);
+
+	/*
+	 * Report only a result that does not match the accounts, so a healthy
+	 * reconcile stays quiet while a broken one is visible in the log. Without
+	 * this a silent no-op is indistinguishable from a silent success, which is
+	 * exactly what made a /home that vanished across a reboot hard to diagnose.
+	 */
+	if (msl_home_status(&st) == 0 && st.links != st.users)
+		msl_log("/home: %d of %d accounts linked", st.links, st.users);
+
 	return 0;
 }

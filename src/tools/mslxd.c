@@ -65,6 +65,18 @@
  */
 #define PERIODIC_SECONDS    60.0
 
+/*
+ * An extra reconcile shortly after startup.
+ *
+ * At boot the daemon can be running before the rest of the system is ready to
+ * answer it - in particular before opendirectoryd will return local accounts,
+ * without which /home cannot be populated. The startup reconcile then does
+ * nothing, and the periodic one is up to a minute away, leaving /home missing
+ * for that whole window. A short follow-up closes it. Both reconciles are
+ * idempotent, so an unnecessary one costs nothing.
+ */
+#define SETTLE_SECONDS      15.0
+
 static CFRunLoopTimerRef s_coalesce;    /* non-NULL while a reconcile is pending */
 
 /* ------------------------------------------------------------------------- */
@@ -154,6 +166,12 @@ periodic_fired(CFRunLoopTimerRef timer, void *info)
 	reconcile("periodic");
 }
 
+static void
+settle_fired(CFRunLoopTimerRef timer, void *info)
+{
+	reconcile("post-boot settle");
+}
+
 /* ------------------------------------------------------------------------- */
 
 static void
@@ -229,7 +247,7 @@ int
 main(int argc, char **argv)
 {
 	DASessionRef session;
-	CFRunLoopTimerRef periodic;
+	CFRunLoopTimerRef periodic, settle;
 
 	if (argc > 1 && strcmp(argv[1], "--version") == 0) {
 		printf("mslxd %s\n", MSL_VERSION);
@@ -279,6 +297,15 @@ main(int argc, char **argv)
 		CFRunLoopAddTimer(CFRunLoopGetCurrent(), periodic,
 		    kCFRunLoopDefaultMode);
 		CFRelease(periodic);
+	}
+
+	/* One-shot follow-up, for the boot case described at SETTLE_SECONDS. */
+	settle = CFRunLoopTimerCreate(kCFAllocatorDefault,
+	    CFAbsoluteTimeGetCurrent() + SETTLE_SECONDS, 0, 0, 0,
+	    settle_fired, NULL);
+	if (settle != NULL) {
+		CFRunLoopAddTimer(CFRunLoopGetCurrent(), settle, kCFRunLoopDefaultMode);
+		CFRelease(settle);
 	}
 
 	msl_log("mslxd: watching for volume and session changes");

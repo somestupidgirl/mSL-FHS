@@ -11,22 +11,43 @@
 
 #include <stdbool.h>
 
+#include "msl_skeleton.h"
+
 /* Persisted enable flag: /var/db/msl.home */
 #define MSL_HOME_STATE      "msl.home"
 
+/* The root-level entry, declared in /etc/synthetic.conf like /mnt and /media. */
+#define MSL_HOME_NAME       "home"
+
 /*
- * macOS ships /home as a symlink to this directory on the writable Data
- * volume, so the component needs no /etc/synthetic.conf entry and no reboot.
+ * Where the symlink farm lives, on the writable Data volume.
+ *
+ * The root-level /home is *not* a permanent part of macOS: it is created at
+ * boot by autofs, from the /home line in /etc/auto_master. Masking that line -
+ * which this component must do, because while the map is active it owns the
+ * directory and nothing can be created there - therefore removes /home itself
+ * at the next boot, leaving the farm below with nothing pointing at it.
+ *
+ * So the component declares its own /home in /etc/synthetic.conf, exactly as
+ * /mnt and /media do. synthetic.conf is processed early at boot, before autofs,
+ * and with the map masked autofs does not contend for the name.
+ *
+ * The consequence is that /home needs a reboot to appear, like the other two.
+ * An earlier design relied on the autofs-created /home and appeared to work,
+ * because the entry autofs had already made survived for the rest of that boot;
+ * it only failed at the next one.
  */
-#define MSL_HOME_ROOT       "/System/Volumes/Data/home"
+#define MSL_HOME_ROOT       MSL_DATA_ROOT "/home"
 
 struct msl_home_status {
 	bool enabled;           /* persisted enable flag */
 	bool automounter;       /* the auto_home map still owns /home */
 	bool masked;            /* our comment marker is present in auto_master */
+	bool reboot_pending;    /* declared in synthetic.conf, not yet live at / */
 	int  users;             /* local accounts eligible for a /home entry */
 	int  links;             /* symlinks currently present under /home */
 	int  foreign;           /* entries under /home that are not ours */
+	struct msl_skeleton_status skel;
 };
 
 /* Fill `st` with the live state. Returns 0 on success, -1 on error. */
