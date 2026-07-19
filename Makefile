@@ -109,6 +109,9 @@ check: | $(OUT)
 	    -DMEDIA_ROOT='"$(TESTDIR)/media"' \
 	    -o $(OUT)/test_media $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
 	    tests/test_media.c $(FRAMEWORKS)
+	$(CC) $(CFLAGS) -I$(SRC)/visibility \
+	    -DTEST_SCRATCH='"$(TESTDIR)/vis"' \
+	    -o $(OUT)/test_visibility $(SRC)/common/msl_util.c tests/test_visibility.c
 	@echo "==> auto_master rewrite tests"
 	@$(OUT)/test_auto_master
 	@echo
@@ -117,6 +120,9 @@ check: | $(OUT)
 	@echo
 	@echo "==> media label tests"
 	@$(OUT)/test_media
+	@echo
+	@echo "==> visibility tests"
+	@$(OUT)/test_visibility
 
 # ---------------------------------------------------------------------------
 # Distribution: a double-clickable installer (.pkg) and disk image (.dmg).

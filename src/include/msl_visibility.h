@@ -86,13 +86,21 @@ int msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len);
 /*
  * Make a mount point browsable, or not, by clearing or setting `nobrowse`.
  *
- * This is a second, independent mechanism from the hidden flag, and /dev needs
- * both: devfs is mounted nobrowse, which removes it from the Finder entirely -
- * Cmd-Shift-. does not reveal it - *and* it carries UF_HIDDEN, which devfs
- * refuses to clear. Clearing nobrowse alone therefore makes /dev appear only
- * when hidden items are being shown, dimmed like any other hidden entry. That
- * is the best available outcome for /dev, and it is worth being clear that it
- * is not the same as fully unhiding it.
+ * This is a second, independent mechanism from the hidden flag: `nobrowse`
+ * removes a mount from the Finder entirely, so that even Cmd-Shift-. does not
+ * reveal it.
+ *
+ * It does not help /dev, which was the reason it was written. /dev is blocked
+ * twice over, and both were measured rather than assumed:
+ *
+ *   - devfs accepts chflags and silently ignores it, so UF_HIDDEN cannot be
+ *     cleared;
+ *   - devfs does not implement MNT_UPDATE, so `mount -u` fails with "option
+ *     not supported" and the nobrowse flag cannot be changed either.
+ *
+ * There is therefore no supported way to show /dev in the Finder. devfs is
+ * rejected up front here so the caller gets that reason rather than mount(8)'s
+ * exit status. The function remains useful for any other nobrowse mount.
  *
  * Requires root. Verifies afterwards, like msl_vis_set().
  */

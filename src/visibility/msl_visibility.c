@@ -10,6 +10,7 @@
 #include "msl_visibility.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mount.h>
@@ -104,10 +105,28 @@ msl_vis_lock_reason(enum msl_vis_lock lock)
 static int
 entry_fs(const char *path, bool symlink, struct statfs *out)
 {
-	if (symlink)
-		return statfs("/", out);
+	char parent[PATH_MAX];
+	char *slash;
 
-	return statfs(path, out);
+	if (!symlink)
+		return statfs(path, out);
+
+	/*
+	 * statfs() follows symlinks, so asking about the link itself means asking
+	 * about the directory holding it. For /home that is /, the sealed root -
+	 * which is why /home cannot be unhidden while /opt can.
+	 */
+	snprintf(parent, sizeof(parent), "%s", path);
+	slash = strrchr(parent, '/');
+
+	if (slash == parent)
+		parent[1] = '\0';       /* "/home" -> "/" */
+	else if (slash != NULL)
+		*slash = '\0';          /* "/a/b"  -> "/a" */
+	else
+		snprintf(parent, sizeof(parent), ".");
+
+	return statfs(parent, out);
 }
 
 /*
@@ -223,15 +242,24 @@ msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
 		return -1;
 	}
 
-	if (!msl_is_root()) {
-		if (reason != NULL)
-			snprintf(reason, reason_len, "changing visibility requires root");
-		return -1;
-	}
-
 	if (lstat(path, &sb) != 0) {
 		if (reason != NULL)
 			snprintf(reason, reason_len, "%s: %s", path, strerror(errno));
+		return -1;
+	}
+
+	/*
+	 * UF_HIDDEN is a *user* flag, so its owner may set it without privilege -
+	 * root is needed only because the root-level entries belong to root. The
+	 * check is therefore on ownership rather than on being root, which both
+	 * states the real requirement and gives a better message than the EPERM
+	 * the syscall would otherwise produce.
+	 */
+	if (geteuid() != 0 && geteuid() != sb.st_uid) {
+		if (reason != NULL)
+			snprintf(reason, reason_len,
+			    "%s is owned by uid %u; changing it requires root",
+			    path, sb.st_uid);
 		return -1;
 	}
 
@@ -285,6 +313,24 @@ msl_vis_set_browsable(const char *path, bool browsable,
 		if (reason != NULL)
 			snprintf(reason, reason_len,
 			    "%s is not a mount point, so it has no browse flag", path);
+		return -1;
+	}
+
+	/*
+	 * devfs does not implement MNT_UPDATE - `mount -u` on it fails outright
+	 * with "option not supported", so its flags cannot be changed after it is
+	 * mounted. Refusing here gives the real reason instead of surfacing
+	 * mount(8)'s exit status.
+	 *
+	 * Together with devfs ignoring chflags, this closes both routes to
+	 * revealing /dev: the hidden flag cannot be cleared and the nobrowse flag
+	 * cannot be changed. See msl_visibility.h.
+	 */
+	if (strcmp(before.fstype, "devfs") == 0) {
+		if (reason != NULL)
+			snprintf(reason, reason_len,
+			    "%s: devfs does not support changing mount options after "
+			    "mounting, so its nobrowse flag cannot be cleared", path);
 		return -1;
 	}
 
