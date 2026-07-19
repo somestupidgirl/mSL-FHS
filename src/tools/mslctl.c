@@ -71,6 +71,21 @@ home_status(void)
 	return 0;
 }
 
+/* Stable one-word name for a visibility lock, for the porcelain interface. */
+static const char *
+vis_lock_word(enum msl_vis_lock lock)
+{
+	switch (lock) {
+	case MSL_VIS_CHANGEABLE: return "changeable";
+	case MSL_VIS_ABSENT:     return "absent";
+	case MSL_VIS_SIP:        return "sip";
+	case MSL_VIS_READONLY:   return "readonly";
+	case MSL_VIS_UNSUPPORTED: return "unsupported";
+	case MSL_VIS_PROTECTED:  return "protected";
+	}
+	return "unknown";
+}
+
 /*
  * Machine-readable state, one `key=value` per line.
  *
@@ -125,6 +140,33 @@ porcelain(void)
 
 	printf("daemon.running=%d\n", msl_daemon_running());
 	printf("version=%s\n", MSL_VERSION);
+
+	/*
+	 * Every root-level node, so the menu can present them all with a
+	 * per-node dropdown. The order is the table's, which is what the GUI
+	 * displays; `nodes` gives it that order without hard-coding the list.
+	 */
+	printf("nodes=");
+	for (size_t i = 0; i < msl_root_node_count; i++)
+		printf("%s%s", i ? "," : "", msl_root_nodes[i].path + 1);
+	printf("\n");
+
+	for (size_t i = 0; i < msl_root_node_count; i++) {
+		const struct msl_node *node = &msl_root_nodes[i];
+		const char *name = node->path + 1;   /* drop the leading slash */
+		struct msl_vis_status vs;
+
+		if (msl_vis_status(node->path, &vs) != 0)
+			continue;
+
+		printf("vis.%s.exists=%d\n",    name, vs.exists);
+		printf("vis.%s.hidden=%d\n",    name, vs.hidden);
+		printf("vis.%s.lock=%s\n",      name, vis_lock_word(vs.lock));
+		printf("vis.%s.linux=%d\n",     name, node->linux_only);
+		printf("vis.%s.mount=%d\n",     name, vs.is_mount);
+		printf("vis.%s.browsable=%d\n", name, vs.browsable);
+		printf("vis.%s.fstype=%s\n",    name, vs.exists ? vs.fstype : "");
+	}
 
 	return 0;
 }

@@ -46,6 +46,46 @@ enum Component: String, CaseIterable {
     }
 }
 
+/// Why a node's Finder visibility cannot be changed - mirrors the C enum's
+/// porcelain words. Only `.changeable` permits a Show/Hide toggle.
+enum VisLock: String {
+    case changeable, absent, sip, readonly, unsupported, protected, unknown
+
+    var canChange: Bool { self == .changeable }
+
+    /// Reason to show when a toggle is offered but disabled.
+    var reason: String? {
+        switch self {
+        case .changeable:  return nil
+        case .absent:      return "Does not exist"
+        case .sip:         return "Protected by System Integrity Protection"
+        case .readonly:    return "On the sealed system volume"
+        case .unsupported: return "This filesystem ignores visibility flags"
+        case .protected:   return "The system refuses to change this entry"
+        case .unknown:     return "Cannot be changed"
+        }
+    }
+}
+
+/// One root-level directory node, as the menu presents it. Covers both the
+/// mSL-managed components (which also carry an on/off state) and the native
+/// macOS directories (which only have visibility).
+struct NodeInfo {
+    let name: String       // "opt"
+    let exists: Bool
+    let hidden: Bool
+    let lock: VisLock
+    let linuxOnly: Bool
+    let isMount: Bool
+    let browsable: Bool
+    let fstype: String
+
+    var path: String { "/" + name }
+
+    /// The managed component this node corresponds to, if any.
+    var component: Component? { Component(rawValue: name) }
+}
+
 /// A snapshot of the whole layer.
 struct MSLState {
     private var values: [String: String] = [:]
@@ -101,20 +141,57 @@ struct MSLState {
             return links == users ? "\(links) of \(users) accounts"
                                   : "\(links) of \(users) accounts — needs sync"
         case .mnt:
-            return "empty, as on Linux"
+            return "No mount points detected"
         case .media:
             let stale = int("media.stale")
             if stale > 0 { return "\(int("media.links")) links, \(stale) stale" }
             let vols = int("media.volumes")
-            return vols == 0 ? "no removable volumes" : "\(vols) volume(s)"
+            return vols == 0 ? "No removable volumes" : "\(vols) volume(s)"
         }
+    }
+
+    /// Every root-level node, in the order the CLI lists them.
+    var nodes: [NodeInfo] {
+        string("nodes").split(separator: ",").map { raw in
+            let name = String(raw)
+            return NodeInfo(
+                name: name,
+                exists: flag("vis.\(name).exists"),
+                hidden: flag("vis.\(name).hidden"),
+                lock: VisLock(rawValue: string("vis.\(name).lock")) ?? .unknown,
+                linuxOnly: flag("vis.\(name).linux"),
+                isMount: flag("vis.\(name).mount"),
+                browsable: flag("vis.\(name).browsable"),
+                fstype: string("vis.\(name).fstype"))
+        }
+    }
+
+    /// The status dot: a node is "on" when its managed component is enabled,
+    /// or - for a native directory with no component - when it exists.
+    func nodeOn(_ n: NodeInfo) -> Bool {
+        if let c = n.component { return enabled(c) }
+        return n.exists
+    }
+
+    /// The line shown inside a node's dropdown.
+    func nodeDetail(_ n: NodeInfo) -> String {
+        if let c = n.component {
+            return detail(c)
+        }
+        if !n.exists {
+            return "Does not exist on this system"
+        }
+        if let reason = n.lock.reason {
+            return "Visibility locked: \(reason)"
+        }
+        return n.hidden ? "Hidden in the Finder" : "Visible in the Finder"
     }
 
     /// Status of a pseudo-filesystem we only observe, never manage.
     func pseudofs(_ name: String) -> String {
         if flag("\(name).mounted") { return "mounted" }
         if flag("\(name).installed") { return "installed, not mounted" }
-        return "not installed"
+        return "Not installed"
     }
 
     // MARK: - Running things
@@ -167,5 +244,13 @@ struct MSLState {
     @discardableResult
     static func syncMedia() -> Bool {
         runPrivileged("\(kMslctl) media sync")
+    }
+
+    /// Show or hide a node in the Finder. One menu click is one action, so this
+    /// takes its own authorization - the batching that the preference pane does
+    /// is for its multi-switch Apply, not for a single toggle.
+    @discardableResult
+    static func setVisible(_ name: String, _ visible: Bool) -> Bool {
+        runPrivileged("\(kMslctl) vis \(visible ? "show" : "hide") \(name)")
     }
 }
