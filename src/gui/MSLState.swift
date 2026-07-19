@@ -189,8 +189,8 @@ struct MSLState {
 
     /// Status of a pseudo-filesystem we only observe, never manage.
     func pseudofs(_ name: String) -> String {
-        if flag("\(name).mounted") { return "mounted" }
-        if flag("\(name).installed") { return "installed, not mounted" }
+        if flag("\(name).mounted") { return "Mounted" }
+        if flag("\(name).installed") { return "Installed, not mounted" }
         return "Not installed"
     }
 
@@ -252,5 +252,28 @@ struct MSLState {
     @discardableResult
     static func setVisible(_ name: String, _ visible: Bool) -> Bool {
         runPrivileged("\(kMslctl) vis \(visible ? "show" : "hide") \(name)")
+    }
+
+    /// Apply component and visibility changes together, in one authorized step.
+    ///
+    /// The preference pane collects both kinds of change and applies them at
+    /// once, so a session of flipping switches costs a single prompt rather
+    /// than one per switch. Component commands run before visibility ones, and
+    /// the whole sequence is chained with `&&` so a failure stops it rather than
+    /// leaving the layer half-applied.
+    @discardableResult
+    static func applyAll(components: [Component: Bool],
+                         visibility: [String: Bool]) -> Bool {
+        var commands: [String] = []
+
+        for (c, on) in components.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            commands.append("\(kMslctl) \(c.rawValue) \(on ? "enable" : "disable")")
+        }
+        for (name, visible) in visibility.sorted(by: { $0.key < $1.key }) {
+            commands.append("\(kMslctl) vis \(visible ? "show" : "hide") \(name)")
+        }
+
+        guard !commands.isEmpty else { return true }
+        return runPrivileged(commands.joined(separator: " && "))
     }
 }
