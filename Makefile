@@ -37,6 +37,7 @@ CFLAGS   := $(ARCHFLAGS) -std=c11 -O2 -g \
 
 MSLCTL_SRCS := $(SRC)/common/msl_util.c \
                $(SRC)/common/msl_detect.c \
+               $(SRC)/visibility/msl_visibility.c \
                $(SRC)/skeleton/msl_skeleton.c \
                $(SRC)/home/msl_home.c \
                $(SRC)/mnt/msl_mnt.c \

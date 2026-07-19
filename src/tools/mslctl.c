@@ -18,6 +18,7 @@
 #include "msl_home.h"
 #include "msl_media.h"
 #include "msl_mnt.h"
+#include "msl_visibility.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -249,6 +250,109 @@ mnt_command(const char *verb)
 	return 2;
 }
 
+/* One-word state for a node's Finder visibility. */
+static const char *
+vis_word(const struct msl_vis_status *st)
+{
+	if (!st->exists)
+		return "absent";
+	return st->hidden ? "hidden" : "shown";
+}
+
+static int
+vis_list(void)
+{
+	printf("%-14s %-8s %-10s %s\n", "NODE", "FINDER", "FS", "NOTE");
+
+	for (size_t i = 0; i < msl_root_node_count; i++) {
+		const struct msl_node *node = &msl_root_nodes[i];
+		struct msl_vis_status st;
+		const char *reason;
+
+		if (msl_vis_status(node->path, &st) != 0)
+			continue;
+
+		reason = msl_vis_lock_reason(st.lock);
+
+		/*
+		 * A node that exists but cannot be changed is the interesting case,
+		 * so the reason is always shown rather than only on a failed attempt.
+		 */
+		printf("%-14s %-8s %-10s %s\n",
+		    node->path,
+		    vis_word(&st),
+		    st.exists ? st.fstype : "-",
+		    (st.exists && reason != NULL) ? reason
+		        : (st.exists && st.is_mount && !st.browsable)
+		            ? "mounted nobrowse: invisible to the Finder"
+		            : "");
+	}
+
+	return 0;
+}
+
+static int
+vis_command(int argc, char **argv)
+{
+	const char *verb = argc > 2 ? argv[2] : NULL;
+	const struct msl_node *node;
+	char reason[512];
+	bool hide;
+
+	if (verb == NULL || strcmp(verb, "list") == 0 || strcmp(verb, "status") == 0)
+		return vis_list();
+
+	if (strcmp(verb, "browse") == 0) {
+		bool on;
+
+		if (argc < 5 || (strcmp(argv[4], "on") != 0 && strcmp(argv[4], "off") != 0)) {
+			msl_err("usage: mslctl vis browse <node> on|off");
+			return 2;
+		}
+
+		node = msl_node_find(argv[3]);
+		if (node == NULL) {
+			msl_err("unknown node: %s", argv[3]);
+			return 2;
+		}
+
+		on = strcmp(argv[4], "on") == 0;
+		if (msl_vis_set_browsable(node->path, on, reason, sizeof(reason)) != 0) {
+			msl_err("%s", reason);
+			return 1;
+		}
+
+		msl_log("%s is now %s to the Finder", node->path,
+		    on ? "browsable" : "hidden from browsing");
+		return 0;
+	}
+
+	hide = strcmp(verb, "hide") == 0;
+	if (!hide && strcmp(verb, "show") != 0) {
+		msl_err("unknown command: vis %s", verb);
+		return 2;
+	}
+
+	if (argc < 4) {
+		msl_err("usage: mslctl vis %s <node>", verb);
+		return 2;
+	}
+
+	node = msl_node_find(argv[3]);
+	if (node == NULL) {
+		msl_err("unknown node: %s", argv[3]);
+		return 2;
+	}
+
+	if (msl_vis_set(node->path, hide, reason, sizeof(reason)) != 0) {
+		msl_err("%s", reason);
+		return 1;
+	}
+
+	msl_log("%s is now %s in the Finder", node->path, hide ? "hidden" : "shown");
+	return 0;
+}
+
 static int
 home_command(const char *verb)
 {
@@ -299,7 +403,13 @@ usage(void)
 	    "media also supports:\n"
 	    "  list     show the removable volumes that would appear in /media\n"
 	    "\n"
-	    "  porcelain  machine-readable state, one key=value per line\n");
+	    "  porcelain  machine-readable state, one key=value per line\n"
+	    "\n"
+	    "Finder visibility of the root-level directories:\n"
+	    "  vis              list every node and whether it is hidden\n"
+	    "  vis show <node>  clear the hidden flag         (root)\n"
+	    "  vis hide <node>  set the hidden flag           (root)\n"
+	    "  vis browse <node> on|off   clear or set the mount nobrowse flag (root)\n");
 }
 
 int
@@ -342,6 +452,9 @@ main(int argc, char **argv)
 
 	if (strcmp(argv[1], "media") == 0)
 		return media_command(argc > 2 ? argv[2] : NULL);
+
+	if (strcmp(argv[1], "vis") == 0)
+		return vis_command(argc, argv);
 
 	msl_err("unknown component: %s", argv[1]);
 	usage();
