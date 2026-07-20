@@ -15,15 +15,20 @@ INSTALL
     macOS creates root-level directories only at startup.
 
 UNINSTALL
-    Run "Uninstall mSL.command". It disables every component first - which
-    restores /etc/auto_master and removes the /etc/synthetic.conf entries -
-    and then removes the installed files.
+    Open /Applications/mSL/Uninstall-FHS.app, installed alongside the app.
+    Or run "Uninstall FHS.command" from this disk image, or
+    "sudo fhsctl uninstall" from a terminal - all three do the same thing.
+
+    Every component is switched off first. That is what restores
+    /etc/auto_master and withdraws the /etc/synthetic.conf entries, so the
+    system is left as it was found.
 
 WHAT GETS INSTALLED
     /usr/local/sbin/fhsctl                       command-line control
     /usr/local/sbin/fhsxd                        layout daemon
     /Library/LaunchDaemons/com.beako.fhsxd.plist daemon launchd job
     /Applications/mSL/FHS.app                    menu-bar app
+    /Applications/mSL/Uninstall-FHS.app          uninstaller
     /Library/PreferencePanes/FHS.prefPane        System Settings pane
 
 WHAT IT CHANGES, ONLY WHEN YOU ENABLE A COMPONENT

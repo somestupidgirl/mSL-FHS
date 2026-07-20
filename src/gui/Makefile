@@ -11,11 +11,14 @@ MACOS    := $(CONTENTS)/MacOS
 PREFPANE := $(APP).prefPane
 PPCONT   := $(PREFPANE)/Contents
 
+UNINST   := Uninstall-FHS.app
+UNCONT   := $(UNINST)/Contents
+
 SWIFTFLAGS := -O
 SIGNCERT   ?= -
 ICONSET    := AppIcon.iconset
 
-all: $(BUNDLE) $(PREFPANE)
+all: $(BUNDLE) $(PREFPANE) $(UNINST)
 
 # Regenerate the icon PNGs from their source. Not part of `all`: the PNGs are
 # committed build inputs, so a normal build does not need AppKit to draw them
@@ -49,6 +52,18 @@ $(BUNDLE): FHSState.swift FHSMenu.swift main.swift Info.plist.in ../../VERSION \
 
 # The preference pane's principal binary is a loadable Mach-O bundle, loaded by
 # System Settings - hence -emit-library -bundle rather than a normal executable.
+# The uninstaller. Thin by design - it asks fhsctl to do the work, so the
+# teardown sequence lives in exactly one place.
+$(UNINST): Uninstall.swift uninstall-Info.plist.in ../../VERSION $(BUNDLE)
+	mkdir -p $(UNCONT)/MacOS $(UNCONT)/Resources
+	swiftc $(SWIFTFLAGS) -framework AppKit \
+	    -o $(UNCONT)/MacOS/Uninstall-FHS Uninstall.swift
+	@# Same icon as the app it removes, so the pair reads as one thing.
+	cp $(CONTENTS)/Resources/AppIcon.icns $(UNCONT)/Resources/
+	sed -e 's/__FHSVERSION__/$(VERSION)/g' uninstall-Info.plist.in > $(UNCONT)/Info.plist
+	xattr -cr $(UNINST)
+	codesign -s "$(SIGNCERT)" --force --timestamp=none $(UNINST)
+
 $(PREFPANE): FHSState.swift FHSPref.swift prefpane-Info.plist.in ../../VERSION \
              appicon.png
 	mkdir -p $(PPCONT)/MacOS $(PPCONT)/Resources
@@ -62,6 +77,6 @@ $(PREFPANE): FHSState.swift FHSPref.swift prefpane-Info.plist.in ../../VERSION \
 	codesign -s "$(SIGNCERT)" --force --timestamp=none $(PREFPANE)
 
 clean:
-	rm -rf $(BUNDLE) $(PREFPANE) $(ICONSET)
+	rm -rf $(BUNDLE) $(PREFPANE) $(UNINST) $(ICONSET)
 
 .PHONY: all icons clean

@@ -70,7 +70,10 @@ FRAMEWORKS  := -framework CoreFoundation \
                -framework DiskArbitration \
                -framework SystemConfiguration
 
-all: $(FHSCTL) $(FHSXD) $(OUT)/$(DAEMON_PLIST) gui
+# `make` builds everything a release needs, installer included.
+all: build dmg
+
+build: $(FHSCTL) $(FHSXD) $(OUT)/$(DAEMON_PLIST) gui
 
 $(FHSCTL): $(FHSCTL_SRCS) $(wildcard $(SRC)/include/*.h) | $(OUT)
 	$(CC) $(CFLAGS) -o $@ $(FHSCTL_SRCS) $(FRAMEWORKS)
@@ -84,8 +87,8 @@ $(OUT)/$(DAEMON_PLIST): $(SRC)/tools/$(DAEMON_PLIST) | $(OUT)
 # Menu-bar app and preference pane.
 gui: | $(OUT)
 	$(MAKE) -C $(SRC)/gui
-	rm -rf $(OUT)/FHS.app $(OUT)/FHS.prefPane
-	mv $(SRC)/gui/FHS.app $(SRC)/gui/FHS.prefPane $(OUT)/
+	rm -rf $(OUT)/FHS.app $(OUT)/FHS.prefPane $(OUT)/Uninstall-FHS.app
+	mv $(SRC)/gui/FHS.app $(SRC)/gui/FHS.prefPane $(SRC)/gui/Uninstall-FHS.app $(OUT)/
 
 $(OUT):
 	@mkdir -p $(OUT)
@@ -159,10 +162,10 @@ check: | $(OUT)
 
 PKG_ID   := com.beako.fhs.pkg
 PKG_COMP := $(OUT)/fhs-component.pkg
-PKG_OUT  := $(OUT)/mSL-XNU-$(VERSION).pkg
-DMG_OUT  := $(OUT)/mSL-XNU-$(VERSION).dmg
+PKG_OUT  := $(OUT)/FHS-$(VERSION).pkg
+DMG_OUT  := $(OUT)/FHS-$(VERSION).dmg
 
-pkg: all
+pkg: build
 	@echo "==> Staging installer payload"
 	rm -rf $(OUT)/pkgroot $(OUT)/pkgres
 	install -d $(OUT)/pkgroot/usr/local/sbin \
@@ -172,6 +175,7 @@ pkg: all
 	cp    $(FHSCTL) $(FHSXD)          $(OUT)/pkgroot/usr/local/sbin/
 	cp    $(OUT)/$(DAEMON_PLIST)      $(OUT)/pkgroot/Library/LaunchDaemons/
 	cp -R $(OUT)/FHS.app              $(OUT)/pkgroot/Applications/mSL/
+	cp -R $(OUT)/Uninstall-FHS.app    $(OUT)/pkgroot/Applications/mSL/
 	cp -R $(OUT)/FHS.prefPane         $(OUT)/pkgroot/Library/PreferencePanes/
 	@# codesign and pkgbuild reject Finder-info and similar xattrs.
 	xattr -cr $(OUT)/pkgroot
@@ -197,9 +201,9 @@ dmg: pkg
 	mkdir -p $(OUT)/dmg
 	cp $(PKG_OUT) $(OUT)/dmg/
 	cp installer/resources/DMG-README.txt $(OUT)/dmg/README.txt
-	cp installer/uninstall.command "$(OUT)/dmg/Uninstall mSL.command"
-	chmod +x "$(OUT)/dmg/Uninstall mSL.command"
-	hdiutil create -volname "mSL-XNU $(VERSION)" -srcfolder $(OUT)/dmg \
+	cp installer/uninstall.command "$(OUT)/dmg/Uninstall FHS.command"
+	chmod +x "$(OUT)/dmg/Uninstall FHS.command"
+	hdiutil create -volname "FHS $(VERSION)" -srcfolder $(OUT)/dmg \
 	               -ov -format UDZO $(DMG_OUT)
 	rm -rf $(OUT)/dmg
 	@echo "==> Built $(DMG_OUT)"
@@ -222,7 +226,7 @@ distcheck:
 		{ echo "FAIL: cannot expand product archive"; exit 1; }
 	@bom=`find $(OUT)/distcheck -name Bom | head -1`; \
 	 test -n "$$bom" || { echo "FAIL: no component package (Bom) in archive"; exit 1; }; \
-	 for f in fhsctl fhsxd $(DAEMON_PLIST) FHS.app FHS.prefPane; do \
+	 for f in fhsctl fhsxd $(DAEMON_PLIST) FHS.app Uninstall-FHS.app FHS.prefPane; do \
 	   lsbom "$$bom" 2>/dev/null | grep -q "$$f" || \
 	     { echo "FAIL: payload missing $$f"; rm -rf $(OUT)/distcheck; exit 1; }; \
 	   echo "  ok  payload: $$f"; \
@@ -303,12 +307,17 @@ migrate: require-root
 	@# Remove the shared folder only if this was the last module in it.
 	-@rmdir $(APP_ROOT) 2>/dev/null || true
 	cp -R $(OUT)/FHS.app $(APP_DIR)/FHS.app
+	rm -rf $(APP_DIR)/Uninstall-FHS.app
+	cp -R $(OUT)/Uninstall-FHS.app $(APP_DIR)/Uninstall-FHS.app
 	cp -R $(OUT)/FHS.prefPane $(PREFPANE_DIR)/FHS.prefPane
-	chown -R root:wheel $(APP_DIR)/FHS.app $(PREFPANE_DIR)/FHS.prefPane
-	chmod -R 755 $(APP_DIR)/FHS.app $(PREFPANE_DIR)/FHS.prefPane
+	chown -R root:wheel $(APP_DIR)/FHS.app $(APP_DIR)/Uninstall-FHS.app \
+	                    $(PREFPANE_DIR)/FHS.prefPane
+	chmod -R 755 $(APP_DIR)/FHS.app $(APP_DIR)/Uninstall-FHS.app \
+	             $(PREFPANE_DIR)/FHS.prefPane
 	@# Gatekeeper flags a quarantined bundle as damaged when it arrives via a
 	@# download; the build products are local, but the payload may not be.
-	-@xattr -dr com.apple.quarantine $(APP_DIR)/FHS.app 2>/dev/null || true
+	-@xattr -dr com.apple.quarantine $(APP_DIR)/FHS.app \
+	    $(APP_DIR)/Uninstall-FHS.app 2>/dev/null || true
 	@# Launch the menu-bar app in the console user's session so its icon shows
 	@# immediately. Best-effort: root install hopping to the logged-in user.
 	-@u=$$(stat -f '%Su' /dev/console 2>/dev/null); \
@@ -334,29 +343,31 @@ migrate: require-root
 # leaving a masked /etc/auto_master behind with no way to restore it would be a
 # hostile way to uninstall.
 uninstall: require-root
-	-@launchctl bootout system/$(DAEMON_LABEL) 2>/dev/null || true
-	-@[ -x $(SBIN_DIR)/fhsctl ] && $(SBIN_DIR)/fhsctl media disable || true
-	-@[ -x $(SBIN_DIR)/fhsctl ] && $(SBIN_DIR)/fhsctl mnt disable   || true
-	-@[ -x $(SBIN_DIR)/fhsctl ] && $(SBIN_DIR)/fhsctl home disable  || true
-	rm -f $(DAEMON_DIR)/$(DAEMON_PLIST)
-	rm -f $(SBIN_DIR)/fhsctl $(SBIN_DIR)/fhsxd
-	rm -rf $(APP_DIR)/FHS.app $(PREFPANE_DIR)/FHS.prefPane
-	@# Remove the shared folder only if this was the last module in it.
-	-@rmdir $(APP_ROOT) 2>/dev/null || true
-	rm -f /var/db/fhs.home /var/db/fhs.mnt /var/db/fhs.media \
-	      /var/db/fhs.root /var/db/fhs.run /var/db/fhs.srv /var/db/fhs.boot
-	@echo "mSL: uninstalled. /var/db/fhs.auto_master.orig kept as a backup."
+	@# fhsctl owns the teardown sequence: it is the only place that knows the
+	@# full component list. Earlier copies here and in the disk image's script
+	@# had drifted, disabling three of the seven and leaving the rest with live
+	@# /etc/synthetic.conf entries.
+	@if [ -x $(SBIN_DIR)/fhsctl ]; then \
+		$(SBIN_DIR)/fhsctl uninstall; \
+	else \
+		echo "error: $(SBIN_DIR)/fhsctl is missing, so the components cannot"; \
+		echo "       be switched off. Build and 'sudo make install' first, or"; \
+		echo "       restore /etc/auto_master from /var/db/fhs.auto_master.orig."; \
+		exit 1; \
+	fi
+	$(MAKE) clean
 
 require-root:
 	@[ "$$(id -u)" -eq 0 ] || \
 		{ echo "error: run as root (sudo make $(MAKECMDGOALS))"; exit 1; }
 
 require-built:
-	@[ -x "$(FHSCTL)" ] && [ -x "$(FHSXD)" ] && [ -d "$(OUT)/FHS.app" ] || \
+	@[ -x "$(FHSCTL)" ] && [ -x "$(FHSXD)" ] && [ -d "$(OUT)/FHS.app" ] && \
+	 [ -d "$(OUT)/Uninstall-FHS.app" ] || \
 		{ echo "error: not built. Run 'make' first."; exit 1; }
 
 clean:
 	rm -rf $(OUT)
 	$(MAKE) -C $(SRC)/gui clean
 
-.PHONY: all gui check pkg dmg distcheck migrate install uninstall require-root require-built clean
+.PHONY: all build gui check pkg dmg distcheck migrate install uninstall require-root require-built clean

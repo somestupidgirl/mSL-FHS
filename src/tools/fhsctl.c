@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 /* One-line summary of a pseudo-filesystem we only observe. */
 static const char *
@@ -604,6 +605,96 @@ home_command(const char *verb)
 	return 2;
 }
 
+/*
+ * Complete teardown: switch every component off, then remove everything this
+ * project installed.
+ *
+ * This lives here, rather than being repeated in the uninstaller app, the
+ * disk image's shell script and `make uninstall`, because it is the one place
+ * that knows the full component list. The earlier copies each disabled only
+ * home, mnt and media - so boot, root, run and srv kept their
+ * /etc/synthetic.conf entries after an "uninstall", leaving root-level
+ * symlinks behind with the tool that made them gone.
+ *
+ * Order matters. Disabling comes first and needs both this binary and the
+ * persisted state present: it is what restores /etc/auto_master and withdraws
+ * the synthetic.conf entries. Removing the files first would strand the
+ * system with a masked automounter line and no supported way to put it back.
+ */
+static int
+uninstall_all(void)
+{
+	static const char *const files[] = {
+		"/Library/LaunchDaemons/com.beako.fhsxd.plist",
+		"/usr/local/sbin/fhsxd",
+		"/var/db/fhs.home", "/var/db/fhs.mnt", "/var/db/fhs.media",
+		"/var/db/fhs.boot", "/var/db/fhs.root", "/var/db/fhs.run",
+		"/var/db/fhs.srv",
+		NULL
+	};
+	static const char *const bundles[] = {
+		"/Applications/mSL/FHS.app",
+		"/Applications/mSL/Uninstall-FHS.app",
+		"/Library/PreferencePanes/FHS.prefPane",
+		NULL
+	};
+
+	if (!fhs_is_root()) {
+		fhs_err("uninstalling requires root");
+		return 1;
+	}
+
+	fhs_log("Disabling components");
+	fhs_media_disable();
+	fhs_boot_disable();
+	fhs_mnt_disable();
+	for (size_t i = 0; i < fhs_simple_node_count; i++)
+		fhs_simple_disable(&fhs_simple_nodes[i]);
+	/* Last, so a failure above still leaves auto_master in a known state. */
+	fhs_home_disable();
+
+	fhs_log("Stopping the daemon");
+	{
+		const char *const argv[] = { "/bin/launchctl", "bootout",
+		                             "system/com.beako.fhsxd", NULL };
+		fhs_run(argv);
+	}
+
+	fhs_log("Removing files");
+	for (int i = 0; files[i] != NULL; i++) {
+		if (unlink(files[i]) == 0)
+			fhs_log("  removed %s", files[i]);
+	}
+	for (int i = 0; bundles[i] != NULL; i++) {
+		const char *const argv[] = { "/bin/rm", "-rf", bundles[i], NULL };
+		if (access(bundles[i], F_OK) == 0 && fhs_run(argv) == 0)
+			fhs_log("  removed %s", bundles[i]);
+	}
+
+	/* Only if this was the last module in it. */
+	rmdir("/Applications/mSL");
+
+	{
+		const char *const argv[] = { "/usr/sbin/pkgutil", "--forget",
+		                             "com.beako.fhs.pkg", NULL };
+		fhs_run(argv);
+	}
+
+	fhs_log("");
+	fhs_log("mSL/FHS has been removed.");
+	fhs_log("Your original /etc/auto_master is kept at "
+	        "/var/db/fhs.auto_master.orig.");
+	fhs_log("Root-level directories remain until the next restart.");
+
+	/*
+	 * This binary goes last, and removes itself. Unlinking a running
+	 * executable is fine on a UNIX system: the file is gone from the
+	 * directory, and this process keeps running from the open inode.
+	 */
+	unlink("/usr/local/sbin/fhsctl");
+	return 0;
+}
+
 static void
 usage(void)
 {
@@ -635,7 +726,9 @@ usage(void)
 	    "  vis              list every node and whether it is hidden\n"
 	    "  vis show <node>  clear the hidden flag         (root)\n"
 	    "  vis hide <node>  set the hidden flag           (root)\n"
-	    "  vis browse <node> on|off   clear or set the mount nobrowse flag (root)\n");
+	    "  vis browse <node> on|off   clear or set the mount nobrowse flag (root)\n"
+	    "\n"
+	    "  uninstall  switch every component off and remove mSL/FHS   (root)\n");
 }
 
 int
@@ -691,6 +784,9 @@ main(int argc, char **argv)
 
 	if (strcmp(argv[1], "media") == 0)
 		return media_command(argc > 2 ? argv[2] : NULL);
+
+	if (strcmp(argv[1], "uninstall") == 0)
+		return uninstall_all();
 
 	if (strcmp(argv[1], "boot") == 0)
 		return boot_command(argc > 2 ? argv[2] : NULL);
