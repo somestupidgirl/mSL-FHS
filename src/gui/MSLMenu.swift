@@ -91,7 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the automatic one would leave its size and position outside our
         // control, and the two rows have to match.
         menu.addItem(.separator())
-        let aboutItem = addAction(menu, "About mSL/XNU", #selector(showAbout))
+        let aboutItem = addAction(menu, "About mSL/XNU", #selector(showAbout),
+                                  key: "?")
+        // "?" is typed with shift, and AppKit would otherwise render the
+        // equivalent as the shifted key it is reached by. Naming the modifier
+        // explicitly keeps it displayed as the conventional Command-?.
+        aboutItem.keyEquivalentModifierMask = .command
         setImageSymbol(aboutItem, "info.circle")
         let quitItem = addAction(menu, "Quit", #selector(NSApplication.terminate(_:)),
                                  target: NSApp, key: "q")
