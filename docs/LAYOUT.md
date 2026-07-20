@@ -15,6 +15,7 @@ former wins — including when that means a directory stays empty.
 | `/home/<user>` | Per-user home directories | `/Users/<user>` | Skeleton symlink + farm; `auto_home` masked | Yes | **Working** |
 | `/mnt` | Scratch for manual mounts | — | Skeleton symlink; mounts reported | Yes | **Working** |
 | `/media/<user>/<label>` | Removable media, per session | `/Volumes/<label>`, filtered | Symlink farm from DiskArbitration | Yes | **Working** |
+| `/boot` | Kernel and bootloader | `/System/Library/…` | Skeleton symlink + farm of links to artifacts | Yes | **Working** |
 | `/proc` | Process pseudo-filesystem | — | External kext; **detected only** | n/a | **Working** (detection) |
 | `/sys` | Kernel object pseudo-filesystem | — | External; **detected only** | n/a | **Working** (detection) |
 | `/root` | Superuser home | `/var/root` | Skeleton symlink to existing content | Yes | **Working** |
@@ -52,6 +53,7 @@ Because the first form is read-only, mSL/XNU uses the second exclusively:
 home	/System/Volumes/Data/home
 mnt	/System/Volumes/Data/mnt
 media	/System/Volumes/Data/media
+boot	/System/Volumes/Data/boot
 srv	/System/Volumes/Data/srv
 root	/var/root
 run	/var/run
@@ -329,6 +331,101 @@ approximation for the rest.
 Where no console user exists — mounts during boot, or over SSH with nobody
 logged in — the volume is attributed to the console user when one next appears,
 rather than being dropped.
+
+## `/boot`
+
+**Linux:** `/boot` holds what the machine boots — the kernel (`vmlinuz-<version>`),
+an initial ramdisk, and bootloader files, typically with a stable `vmlinuz`
+alias beside the version-qualified name.
+
+**macOS:** the same artifacts exist, scattered under `/System/Library` and named
+differently:
+
+| Artifact | Where macOS keeps it |
+|----------|----------------------|
+| The kernel this machine boots | `/System/Library/Kernels/kernel.release.<soc>` |
+| The generic kernel | `/System/Library/Kernels/kernel` |
+| The bootloader | `/System/Library/CoreServices/boot.efi` |
+| Kexts linked into bootable collections | `/System/Library/KernelCollections/*.kc` |
+
+**Mechanism.** A skeleton entry plus a farm of symlinks. Nothing is copied and
+nothing is modified: the artifacts stay where macOS put them, on the sealed
+system volume, and `/boot` only names them.
+
+```
+/boot/darwin-25.5.0        -> Kernels/kernel.release.t8142
+/boot/darwin               -> the same, a stable alias
+/boot/kernels/…            -> every kernel image macOS ships
+/boot/efi/boot.efi         -> CoreServices/boot.efi
+/boot/kernelcollections/…  -> the .kc collections
+```
+
+### Selecting the kernel
+
+macOS ships more than a dozen kernel images, one per SoC family, so "the kernel"
+has to be chosen rather than assumed. `kern.version` names the build
+configuration of the running kernel:
+
+```
+Darwin Kernel Version 25.5.0: … root:xnu-12377.121.10~1/RELEASE_ARM64_T8142
+```
+
+whose `T8142` selects `kernel.release.t8142`. This is the same derivation procfs
+uses to locate the running kernel's Mach-O for its symbol table.
+
+Intel machines, virtual machines, and anything whose per-SoC image is absent
+fall back to `/System/Library/Kernels/kernel`. That is the correct answer on
+those systems, not a degraded one.
+
+### Naming, and the alias that is deliberately absent
+
+The kernel is named `darwin-<release>` — `darwin-25.5.0` — mirroring Linux's
+`vmlinuz-<version>` convention, with a bare `darwin` alias beside it as Linux
+has a bare `vmlinuz`.
+
+There is deliberately **no `vmlinuz` symlink.** It would be the same false
+correspondence this document rejects for `/lib`: a program opening
+`/boot/vmlinuz` expects an ELF Linux kernel and would get a Mach-O. Following
+the *shape* of the Linux convention while keeping an honest name is the whole
+point. A test asserts the name never contains `vmlinuz`.
+
+### Why `/boot` is writable, and stays that way
+
+Every other node that merely exposes existing content — `/root`, `/run` —
+points its root-level symlink straight at the macOS directory. `/boot` could
+have done something similar. It deliberately does not: `/boot` is a directory
+the layer **owns**, on the writable Data volume, holding symlinks.
+
+That costs nothing now and buys something specific later. This project is the
+filesystem half of a larger effort to run Linux binaries on macOS, alongside a
+Linux image activator and a Linux ABI layer. A real Linux kernel image will
+eventually live in `/boot` next to the Darwin ones. A `/boot` that pointed at a
+read-only system directory could not hold one; a directory the layer owns can,
+without rearranging anything.
+
+The pruning rule follows from that, and is the safety property worth stating:
+**only symlinks pointing into `/System/Library` are ever removed.** A regular
+file placed in `/boot` by hand — a Linux kernel image, an initrd — is not a
+symlink into `/System/Library`, so reconciliation leaves it alone. The tests
+cover exactly this: a regular `vmlinuz-6.12.0` survives a prune, as do
+directories and symlinks pointing elsewhere.
+
+### Staying current
+
+`mslxd` reconciles `/boot` along with the other farms. The artifacts change only
+when macOS is updated, but that is precisely when `darwin-25.5.0` would
+otherwise be left pointing at a kernel version that no longer exists.
+
+### Verified behaviour
+
+Confirmed across a reboot on macOS 26.5.2, Apple Silicon:
+
+- `/boot` appears with all 19 links.
+- `/boot/darwin` resolves to a **Mach-O 64-bit executable arm64e**, byte-for-byte
+  the same size as `kernel.release.t8142` — a real kernel image, not a
+  plausible-looking link.
+- `/boot/efi/boot.efi` resolves to a **PE32+ EFI application**.
+- Both kernel collections resolve, at 67 MB and 361 MB.
 
 ## `/root`, `/run` and `/srv`
 
