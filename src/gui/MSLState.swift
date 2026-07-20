@@ -27,7 +27,7 @@ let kMslctl = "/usr/local/sbin/mslctl"
 /// presented. The first three each have real work behind them; the last three
 /// are skeleton entries only.
 enum Component: String, CaseIterable {
-    case home, mnt, media, root, run, srv
+    case home, mnt, media, boot, root, run, srv
 
     var path: String { "/" + rawValue }
 
@@ -38,6 +38,7 @@ enum Component: String, CaseIterable {
         case .media: return "Removable volumes under /media/<user>"
         case .root:  return "The superuser's home directory"
         case .run:   return "Runtime state — pid files and sockets"
+        case .boot:  return "Kernel and bootloader artifacts"
         case .srv:   return "Data served by this system"
         }
     }
@@ -174,6 +175,12 @@ struct MSLState {
                 return "Target \(target) is missing"
             }
             return "Shows \(target)"
+
+        case .boot:
+            let running = string("boot.running")
+            let n = int("boot.links")
+            if running.isEmpty { return "\(n) link(s)" }
+            return "\(running) — \(n) link(s)"
 
         case .srv:
             return "Empty, as on Linux"

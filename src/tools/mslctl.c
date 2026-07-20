@@ -14,6 +14,7 @@
  *     mslctl home sync           requires root
  */
 #include "msl.h"
+#include "msl_boot.h"
 #include "msl_detect.h"
 #include "msl_home.h"
 #include "msl_media.h"
@@ -152,6 +153,21 @@ porcelain(void)
 		printf("media.stale=%d\n", media.stale);
 	}
 
+	{
+		struct msl_boot_status boot;
+		if (msl_boot_status(&boot) == 0) {
+			printf("boot.enabled=%d\n", boot.enabled);
+			printf("boot.declared=%d\n", boot.skel.declared);
+			printf("boot.conflicting=%d\n", boot.skel.conflicting);
+			printf("boot.active=%d\n", boot.skel.active);
+			printf("boot.reboot_pending=%d\n", boot.reboot_pending);
+			printf("boot.links=%d\n", boot.links);
+			printf("boot.foreign=%d\n", boot.foreign);
+			printf("boot.running=%s\n", boot.running);
+			printf("boot.kernel=%s\n", boot.kernel);
+		}
+	}
+
 	for (size_t i = 0; i < msl_simple_node_count; i++) {
 		const struct msl_simple_def *def = &msl_simple_nodes[i];
 		struct msl_simple_status ss;
@@ -260,6 +276,58 @@ simple_command(const struct msl_simple_def *def, const char *verb)
 		return msl_simple_disable(def) == 0 ? 0 : 1;
 
 	msl_err("unknown command: %s %s", def->name, verb);
+	return 2;
+}
+
+static int
+boot_status(void)
+{
+	struct msl_boot_status st;
+
+	if (msl_boot_status(&st) != 0) {
+		msl_err("cannot read /boot status");
+		return 1;
+	}
+
+	printf("/boot\n");
+	printf("  state        %s\n", st.enabled ? "enabled" : "disabled");
+	printf("  declared     %s\n",
+	    st.skel.declared ? "yes, in /etc/synthetic.conf" : "no");
+	printf("  present      %s\n", st.skel.active ? "yes, /boot exists" : "no");
+	printf("  kernel       %s\n", st.running);
+	printf("               %s\n", st.kernel);
+	printf("  links        %d\n", st.links);
+
+	if (st.foreign > 0)
+		printf("  other        %d entry(s) not created by mSL (left untouched)\n",
+		    st.foreign);
+
+	if (st.skel.conflicting)
+		printf("\n  note: /etc/synthetic.conf declares 'boot' but not as ours.\n"
+		       "        mSL will not modify it.\n");
+	else if (st.reboot_pending)
+		printf("\n  note: declared, but /boot appears only after a reboot.\n"
+		       "        The symlinks below it are already in place.\n");
+
+	return 0;
+}
+
+static int
+boot_command(const char *verb)
+{
+	if (verb == NULL || strcmp(verb, "status") == 0)
+		return boot_status();
+
+	if (strcmp(verb, "enable") == 0)
+		return msl_boot_enable() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "disable") == 0)
+		return msl_boot_disable() == 0 ? 0 : 1;
+
+	if (strcmp(verb, "sync") == 0)
+		return msl_boot_sync() == 0 ? 0 : 1;
+
+	msl_err("unknown command: boot %s", verb);
 	return 2;
 }
 
@@ -542,6 +610,7 @@ usage(void)
 	    "  root     /root -> /var/root, the superuser's home\n"
 	    "  run      /run -> /var/run, runtime state\n"
 	    "  srv      /srv, empty (as on Linux)\n"
+	    "  boot     /boot, the kernel and bootloader artifacts\n"
 	    "\n"
 	    "commands:\n"
 	    "  status   show the current state (default)\n"
@@ -584,6 +653,10 @@ main(int argc, char **argv)
 		if (media_status() != 0)
 			rc = 1;
 
+		printf("\n");
+		if (boot_status() != 0)
+			rc = 1;
+
 		for (size_t i = 0; i < msl_simple_node_count; i++) {
 			printf("\n");
 			if (simple_status(&msl_simple_nodes[i]) != 0)
@@ -608,6 +681,9 @@ main(int argc, char **argv)
 
 	if (strcmp(argv[1], "media") == 0)
 		return media_command(argc > 2 ? argv[2] : NULL);
+
+	if (strcmp(argv[1], "boot") == 0)
+		return boot_command(argc > 2 ? argv[2] : NULL);
 
 	if (strcmp(argv[1], "vis") == 0)
 		return vis_command(argc, argv);

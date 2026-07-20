@@ -41,6 +41,7 @@ MSLCTL_SRCS := $(SRC)/common/msl_util.c \
                $(SRC)/skeleton/msl_skeleton.c \
                $(SRC)/home/msl_home.c \
                $(SRC)/mnt/msl_mnt.c \
+               $(SRC)/boot/msl_boot.c \
                $(SRC)/simple/msl_simple.c \
                $(SRC)/media/msl_media.c \
                $(SRC)/tools/mslctl.c
@@ -48,6 +49,7 @@ MSLCTL      := $(OUT)/mslctl
 
 MSLXD_SRCS  := $(SRC)/common/msl_util.c \
                $(SRC)/skeleton/msl_skeleton.c \
+               $(SRC)/boot/msl_boot.c \
                $(SRC)/home/msl_home.c \
                $(SRC)/media/msl_media.c \
                $(SRC)/tools/mslxd.c
@@ -117,6 +119,10 @@ check: | $(OUT)
 	$(CC) $(CFLAGS) -I$(SRC)/mnt \
 	    -o $(OUT)/test_mnt $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
 	    tests/test_mnt.c
+	$(CC) $(CFLAGS) -I$(SRC)/boot \
+	    -DTEST_SCRATCH='"$(TESTDIR)/boot"' \
+	    -o $(OUT)/test_boot $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
+	    tests/test_boot.c
 	$(CC) $(CFLAGS) -I$(SRC)/simple \
 	    -o $(OUT)/test_simple $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
 	    tests/test_simple.c
@@ -137,6 +143,9 @@ check: | $(OUT)
 	@echo
 	@echo "==> skeleton-only node tests"
 	@$(OUT)/test_simple
+	@echo
+	@echo "==> /boot tests"
+	@$(OUT)/test_boot
 
 # ---------------------------------------------------------------------------
 # Distribution: a double-clickable installer (.pkg) and disk image (.dmg).
@@ -276,7 +285,7 @@ uninstall: require-root
 	rm -f $(SBIN_DIR)/mslctl $(SBIN_DIR)/mslxd
 	rm -rf $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
 	rm -f /var/db/msl.home /var/db/msl.mnt /var/db/msl.media \
-	      /var/db/msl.root /var/db/msl.run /var/db/msl.srv
+	      /var/db/msl.root /var/db/msl.run /var/db/msl.srv /var/db/msl.boot
 	@echo "mSL: uninstalled. /var/db/msl.auto_master.orig kept as a backup."
 
 require-root:

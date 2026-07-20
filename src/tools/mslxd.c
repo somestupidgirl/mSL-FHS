@@ -27,6 +27,7 @@
  * Run as a root LaunchDaemon (KeepAlive), mirroring procfsd.
  */
 #include "msl.h"
+#include "msl_boot.h"
 #include "msl_home.h"
 #include "msl_media.h"
 
@@ -95,6 +96,14 @@ reconcile(const char *why)
 
 	if (msl_media_sync() != 0)
 		msl_err("mslxd: /media sync failed");
+
+	/*
+	 * /boot changes only when macOS is updated, but that is exactly when its
+	 * links would otherwise be left pointing at a kernel version that no
+	 * longer exists.
+	 */
+	if (msl_boot_sync() != 0)
+		msl_err("mslxd: /boot sync failed");
 }
 
 static void
