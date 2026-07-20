@@ -117,8 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// One directory row: a coloured dot, the path, and a dropdown.
     private func addNode(_ menu: NSMenu, _ node: NodeInfo, _ state: FHSState) {
-        let item = NSMenuItem(title: "\(dot(state.nodeOn(node)))  \(node.path)",
-                              action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: node.path, action: nil, keyEquivalent: "")
+        setStateDot(item, on: state.nodeOn(node))
         item.submenu = nodeSubmenu(node, state)
         menu.addItem(item)
     }
@@ -183,22 +183,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let key = String(path.dropFirst())
         let mounted = state.pseudofsMounted(key)
         let item = NSMenuItem(
-            title: "\(dot(mounted))  \(name): "
-                 + (mounted ? "Mounted at \(path)" : state.pseudofs(key)),
+            title: "\(name): " + (mounted ? "Mounted at \(path)" : state.pseudofs(key)),
             action: nil, keyEquivalent: "")
+        setStateDot(item, on: mounted)
         item.isEnabled = false
         menu.addItem(item)
     }
 
     // MARK: - Small builders
 
-    /// A status dot as text, green (on) or red (off). Kept in the title rather
-    /// than set as item.image on purpose: an item image adds a leading gutter
-    /// that pushes the imageless section headers out of alignment with the rest
-    /// of the menu. Emoji in the title has no such gutter, and matches the
-    /// intended design.
-    private func dot(_ on: Bool) -> String {
-        on ? "🟢" : "🔴"
+    /// Put a green or red status dot in an item's *state* column - the narrow
+    /// slot to the left of the title where AppKit draws a checkmark.
+    ///
+    /// The state column is the right home for it: it is reserved across the
+    /// whole menu already, so the dots cost no indent and the titles line up
+    /// with the section headers above them. An item image would sit in the
+    /// separate image column and push every title right.
+    ///
+    /// The dot is flattened to a plain bitmap before being handed over, which
+    /// is the whole subtlety here - see `flattened`.
+    private func setStateDot(_ item: NSMenuItem, on: Bool) {
+        let conf = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(
+                paletteColors: [on ? .systemGreen : .systemRed]))
+
+        guard let base = NSImage(systemSymbolName: "circle.fill",
+                                 accessibilityDescription: on ? "on" : "off"),
+              let symbol = base.withSymbolConfiguration(conf),
+              let dot = flattened(symbol) else { return }
+
+        item.onStateImage = dot
+        item.state = .on
+    }
+
+    /// Draw an image into a plain bitmap, discarding any symbol representation.
+    ///
+    /// The state column draws an image's real pixels - except when the image is
+    /// backed by an NSSymbolImageRep, which it re-renders from the menu's own
+    /// content tint. A palette-configured symbol therefore has its colour
+    /// thrown away at draw time, and clearing isTemplate does not help, because
+    /// the symbol rep is still what gets drawn. Rendering it once into a bitmap
+    /// leaves ordinary pixels with no symbol rendering left to pass through, so
+    /// green and red survive into the menu.
+    private func flattened(_ image: NSImage) -> NSImage? {
+        let size = image.size
+        guard size.width > 0, size.height > 0,
+              let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(size.width.rounded()),
+                  pixelsHigh: Int(size.height.rounded()),
+                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                  isPlanar: false, colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = size
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+
+        let flat = NSImage(size: size)
+        flat.addRepresentation(rep)
+        return flat
     }
 
     /// Load an SF Symbol sized and tinted for a menu row.
