@@ -77,9 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         addDisabled(menu, "Pseudo-Filesystems:")
-        addPseudoFS(menu, "devfs", "/dev", state.pseudofs("dev"))
-        addPseudoFS(menu, "procfs", "/proc", state.pseudofs("proc"))
-        addPseudoFS(menu, "sysfs", "/sys", state.pseudofs("sys"))
+        addPseudoFS(menu, "devfs", "/dev", state)
+        addPseudoFS(menu, "procfs", "/proc", state)
+        addPseudoFS(menu, "sysfs", "/sys", state)
         menu.addItem(.separator())
 
         if #available(macOS 13.0, *) {
@@ -152,10 +152,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return sub
     }
 
-    private func addPseudoFS(_ menu: NSMenu, _ name: String, _ path: String, _ status: String) {
-        let mounted = status == "mounted"
+    /// A pseudo-filesystem row. The key derived from the path ("/proc" -> "proc")
+    /// is what the porcelain uses, so the dot and the text come from the same
+    /// state rather than one being inferred from the other's wording.
+    private func addPseudoFS(_ menu: NSMenu, _ name: String, _ path: String,
+                             _ state: MSLState) {
+        let key = String(path.dropFirst())
+        let mounted = state.pseudofsMounted(key)
         let item = NSMenuItem(
-            title: "\(dot(mounted))  \(name): " + (mounted ? "Mounted at \(path)" : status),
+            title: "\(dot(mounted))  \(name): "
+                 + (mounted ? "Mounted at \(path)" : state.pseudofs(key)),
             action: nil, keyEquivalent: "")
         item.isEnabled = false
         menu.addItem(item)

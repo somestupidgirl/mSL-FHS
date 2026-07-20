@@ -183,6 +183,13 @@ porcelain(void)
 		printf("%s.target_missing=%d\n", def->name, ss.target_missing);
 	}
 
+	{
+		struct msl_pseudofs dev;
+		msl_detect_devfs(&dev);
+		printf("dev.installed=%d\n", dev.installed);
+		printf("dev.mounted=%d\n", dev.mounted);
+	}
+
 	msl_detect_procfs(&proc);
 	msl_detect_sysfs(&sys);
 	printf("proc.installed=%d\n", proc.installed);
@@ -665,7 +672,10 @@ main(int argc, char **argv)
 
 		msl_detect_procfs(&proc);
 		msl_detect_sysfs(&sys);
+		struct msl_pseudofs dev;
+		msl_detect_devfs(&dev);
 		printf("\npseudo-filesystems (managed by their own projects)\n");
+		printf("  /dev         %s\n", describe(&dev));
 		printf("  /proc        %s\n", describe(&proc));
 		printf("  /sys         %s\n", describe(&sys));
 		printf("\nmslxd        %s\n",

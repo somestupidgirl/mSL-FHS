@@ -83,6 +83,21 @@ msl_detect_sysfs(struct msl_pseudofs *fs)
 	detect(fs, "sysfs", "/sys");
 }
 
+void
+msl_detect_devfs(struct msl_pseudofs *fs)
+{
+	fs->name = "devfs";
+	fs->mountpoint = "/dev";
+
+	/*
+	 * Part of the kernel, so there is nothing to install and nothing to look
+	 * for on disk - the generic detect() would report it as absent because no
+	 * devfs.fs bundle exists.
+	 */
+	fs->installed = true;
+	fs->mounted = mounted_at("devfs", "/dev");
+}
+
 bool
 msl_daemon_running(void)
 {

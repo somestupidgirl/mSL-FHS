@@ -242,6 +242,14 @@ struct MSLState {
         }
     }
 
+    /// Whether a pseudo-filesystem is mounted.
+    ///
+    /// Read from the porcelain flag, never by comparing pseudofs(_:) against a
+    /// literal. That text is display wording and is free to be reworded; a
+    /// caller that matched on it would silently start reporting "not mounted"
+    /// the moment a capital letter changed.
+    func pseudofsMounted(_ name: String) -> Bool { flag("\(name).mounted") }
+
     /// Status of a pseudo-filesystem we only observe, never manage.
     func pseudofs(_ name: String) -> String {
         if flag("\(name).mounted") { return "Mounted" }

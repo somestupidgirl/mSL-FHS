@@ -32,6 +32,15 @@ void msl_detect_procfs(struct msl_pseudofs *fs);
 /* Fill in the state of /sys. */
 void msl_detect_sysfs(struct msl_pseudofs *fs);
 
+/*
+ * Fill in the state of /dev.
+ *
+ * devfs is built into the kernel rather than installed alongside it, so unlike
+ * procfs and sysfs there is no bundle or extension to look for: it is always
+ * present, and the only question is whether it is mounted.
+ */
+void msl_detect_devfs(struct msl_pseudofs *fs);
+
 /* Is the mSL layout daemon running? */
 bool msl_daemon_running(void);
 
