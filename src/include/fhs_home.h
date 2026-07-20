@@ -1,23 +1,23 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_home.h
+ * fhs_home.h
  *
  * The /home component: presents Linux-style /home/<user> paths for local
  * accounts whose real home directories live in /Users.
  */
-#ifndef MSL_HOME_H
-#define MSL_HOME_H
+#ifndef FHS_HOME_H
+#define FHS_HOME_H
 
 #include <stdbool.h>
 
-#include "msl_skeleton.h"
+#include "fhs_skeleton.h"
 
-/* Persisted enable flag: /var/db/msl.home */
-#define MSL_HOME_STATE      "msl.home"
+/* Persisted enable flag: /var/db/fhs.home */
+#define FHS_HOME_STATE      "fhs.home"
 
 /* The root-level entry, declared in /etc/synthetic.conf like /mnt and /media. */
-#define MSL_HOME_NAME       "home"
+#define FHS_HOME_NAME       "home"
 
 /*
  * Where the symlink farm lives, on the writable Data volume.
@@ -37,9 +37,9 @@
  * because the entry autofs had already made survived for the rest of that boot;
  * it only failed at the next one.
  */
-#define MSL_HOME_ROOT       MSL_DATA_ROOT "/home"
+#define FHS_HOME_ROOT       FHS_DATA_ROOT "/home"
 
-struct msl_home_status {
+struct fhs_home_status {
 	bool enabled;           /* persisted enable flag */
 	bool automounter;       /* the auto_home map still owns /home */
 	bool masked;            /* our comment marker is present in auto_master */
@@ -47,36 +47,36 @@ struct msl_home_status {
 	int  users;             /* local accounts eligible for a /home entry */
 	int  links;             /* symlinks currently present under /home */
 	int  foreign;           /* entries under /home that are not ours */
-	struct msl_skeleton_status skel;
+	struct fhs_skeleton_status skel;
 };
 
 /* Fill `st` with the live state. Returns 0 on success, -1 on error. */
-int msl_home_status(struct msl_home_status *st);
+int fhs_home_status(struct fhs_home_status *st);
 
 /*
  * Refuse-to-proceed check. Returns 0 when it is safe to disable the auto_home
  * automounter map, or -1 with a human-readable reason in `reason` (which may
- * be NULL). Called by msl_home_enable(); exposed so callers can probe first.
+ * be NULL). Called by fhs_home_enable(); exposed so callers can probe first.
  */
-int msl_home_check_safe(char *reason, size_t reason_len);
+int fhs_home_check_safe(char *reason, size_t reason_len);
 
 /*
  * Enable: back up and mask the /home line in /etc/auto_master, flush the
  * automounter, then populate the symlink farm. Requires root. Idempotent.
  */
-int msl_home_enable(void);
+int fhs_home_enable(void);
 
 /*
  * Disable: remove only the symlinks this component created, unmask
  * /etc/auto_master and flush the automounter. Requires root. Idempotent.
  */
-int msl_home_disable(void);
+int fhs_home_disable(void);
 
 /*
  * Reconcile the symlink farm with the current account list: add links for new
  * accounts, remove links for deleted ones. Requires root. Safe to call
  * repeatedly; a no-op when the component is disabled.
  */
-int msl_home_sync(void);
+int fhs_home_sync(void);
 
-#endif /* MSL_HOME_H */
+#endif /* FHS_HOME_H */

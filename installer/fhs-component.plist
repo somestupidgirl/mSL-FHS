@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  pkgbuild component settings for the mSL/XNU bundle payloads.
+  pkgbuild component settings for the mSL/FHS bundle payloads.
 
   pkgbuild auto-marks .app/.prefPane bundles as relocatable, which makes the
   installer redirect the payload to any existing copy it finds by identifier
-  (a build tree's out/mSL.app, say) instead of the path in the package - so
-  /Applications/mSL.app is never created. Force them non-relocatable so they
+  (a build tree's out/FHS.app, say) instead of the path in the package - so
+  /Applications/mSL/FHS.app is never created. Force them non-relocatable so they
   always install where the package says.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -15,13 +15,13 @@
 		<key>BundleIsRelocatable</key><false/>
 		<key>BundleIsVersionChecked</key><true/>
 		<key>BundleOverwriteAction</key><string>upgrade</string>
-		<key>RootRelativeBundlePath</key><string>Applications/mSL.app</string>
+		<key>RootRelativeBundlePath</key><string>Applications/mSL/FHS.app</string>
 	</dict>
 	<dict>
 		<key>BundleIsRelocatable</key><false/>
 		<key>BundleIsVersionChecked</key><true/>
 		<key>BundleOverwriteAction</key><string>upgrade</string>
-		<key>RootRelativeBundlePath</key><string>Library/PreferencePanes/mSL.prefPane</string>
+		<key>RootRelativeBundlePath</key><string>Library/PreferencePanes/FHS.prefPane</string>
 	</dict>
 </array>
 </plist>

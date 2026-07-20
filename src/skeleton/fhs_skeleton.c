@@ -1,9 +1,9 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_skeleton.c
+ * fhs_skeleton.c
  *
- * Management of /etc/synthetic.conf entries. See msl_skeleton.h for why this
+ * Management of /etc/synthetic.conf entries. See fhs_skeleton.h for why this
  * mechanism is the only option and why every change costs a reboot.
  *
  * The file is shared: procfs declares its own `proc` entry here, and a user may
@@ -16,8 +16,8 @@
  * path create a symlink. Comments are not documented as supported, so none are
  * written.
  */
-#include "msl.h"
-#include "msl_skeleton.h"
+#include "fhs.h"
+#include "fhs_skeleton.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -66,7 +66,7 @@ valid_name(const char *name)
 static void
 target_for(const char *name, char *buf, size_t bufsz)
 {
-	snprintf(buf, bufsz, "%s/%s", MSL_DATA_ROOT, name);
+	snprintf(buf, bufsz, "%s/%s", FHS_DATA_ROOT, name);
 }
 
 /*
@@ -115,8 +115,8 @@ parse_line(char *line, char **name, char **target)
 /* ------------------------------------------------------------------------- */
 
 int
-msl_skeleton_status_at(const char *name, const char *target,
-    struct msl_skeleton_status *st)
+fhs_skeleton_status_at(const char *name, const char *target,
+    struct fhs_skeleton_status *st)
 {
 	char *text, *line, *next;
 	char want[PATH_MAX], root_path[PATH_MAX];
@@ -132,7 +132,7 @@ msl_skeleton_status_at(const char *name, const char *target,
 	snprintf(want, sizeof(want), "%s", target);
 
 	/* Is it declared, and pointing where we expect? */
-	text = msl_slurp(SYNTHETIC_CONF, NULL);
+	text = fhs_slurp(SYNTHETIC_CONF, NULL);
 	if (text != NULL) {
 		for (line = text; line != NULL && *line != '\0'; line = next) {
 			char *ename, *etarget;
@@ -177,9 +177,9 @@ msl_skeleton_status_at(const char *name, const char *target,
 }
 
 int
-msl_skeleton_add_at(const char *name, const char *target, bool create_target)
+fhs_skeleton_add_at(const char *name, const char *target, bool create_target)
 {
-	struct msl_skeleton_status st;
+	struct fhs_skeleton_status st;
 	char want[PATH_MAX], line[PATH_MAX];
 	char *text = NULL;
 	size_t len = 0;
@@ -187,15 +187,15 @@ msl_skeleton_add_at(const char *name, const char *target, bool create_target)
 	size_t outsz;
 	int rc = -1;
 
-	if (msl_skeleton_status_at(name, target, &st) != 0) {
-		msl_err("invalid skeleton name: %s", name ? name : "(null)");
+	if (fhs_skeleton_status_at(name, target, &st) != 0) {
+		fhs_err("invalid skeleton name: %s", name ? name : "(null)");
 		return -1;
 	}
 
 	snprintf(want, sizeof(want), "%s", target);
 
 	if (st.declared && st.conflicting) {
-		msl_err("%s already declares '%s'%s%s - refusing to change it",
+		fhs_err("%s already declares '%s'%s%s - refusing to change it",
 		    SYNTHETIC_CONF, name,
 		    st.target[0] != '\0' ? " -> " : " as an empty directory",
 		    st.target[0] != '\0' ? st.target : "");
@@ -213,13 +213,13 @@ msl_skeleton_add_at(const char *name, const char *target, bool create_target)
 	 */
 	if (create_target) {
 		if (mkdir(want, 0755) != 0 && errno != EEXIST) {
-			msl_err("cannot create %s: %s", want, strerror(errno));
+			fhs_err("cannot create %s: %s", want, strerror(errno));
 			return -1;
 		}
-		if (msl_is_root() && chown(want, 0, 0) != 0)
-			msl_err("warning: cannot chown %s: %s", want, strerror(errno));
+		if (fhs_is_root() && chown(want, 0, 0) != 0)
+			fhs_err("warning: cannot chown %s: %s", want, strerror(errno));
 	} else if (access(want, F_OK) != 0) {
-		msl_err("cannot declare /%s: its target %s does not exist",
+		fhs_err("cannot declare /%s: its target %s does not exist",
 		    name, want);
 		return -1;
 	}
@@ -228,7 +228,7 @@ msl_skeleton_add_at(const char *name, const char *target, bool create_target)
 		return 0;	/* already correct; target now ensured */
 
 	/* Append our entry, preserving whatever else is in the file. */
-	text = msl_slurp(SYNTHETIC_CONF, &len);
+	text = fhs_slurp(SYNTHETIC_CONF, &len);
 	snprintf(line, sizeof(line), "%s\t%s\n", name, want);
 
 	outsz = len + strlen(line) + 2;
@@ -245,12 +245,12 @@ msl_skeleton_add_at(const char *name, const char *target, bool create_target)
 	memcpy(out + len, line, strlen(line));
 	len += strlen(line);
 
-	if (msl_write_atomic(SYNTHETIC_CONF, out, len, 0644) != 0) {
-		msl_err("cannot write %s: %s", SYNTHETIC_CONF, strerror(errno));
+	if (fhs_write_atomic(SYNTHETIC_CONF, out, len, 0644) != 0) {
+		fhs_err("cannot write %s: %s", SYNTHETIC_CONF, strerror(errno));
 		goto done;
 	}
 
-	msl_log("declared /%s -> %s in %s", name, want, SYNTHETIC_CONF);
+	fhs_log("declared /%s -> %s in %s", name, want, SYNTHETIC_CONF);
 	rc = 1;
 
 done:
@@ -260,7 +260,7 @@ done:
 }
 
 int
-msl_skeleton_remove_at(const char *name, const char *target)
+fhs_skeleton_remove_at(const char *name, const char *target)
 {
 	char *text, *out, *line, *next;
 	char want[PATH_MAX];
@@ -275,7 +275,7 @@ msl_skeleton_remove_at(const char *name, const char *target)
 
 	snprintf(want, sizeof(want), "%s", target);
 
-	text = msl_slurp(SYNTHETIC_CONF, &len);
+	text = fhs_slurp(SYNTHETIC_CONF, &len);
 	if (text == NULL)
 		return 0;	/* no file, nothing declared */
 
@@ -320,8 +320,8 @@ msl_skeleton_remove_at(const char *name, const char *target)
 		goto done;
 	}
 
-	if (msl_write_atomic(SYNTHETIC_CONF, out, outlen, 0644) != 0) {
-		msl_err("cannot write %s: %s", SYNTHETIC_CONF, strerror(errno));
+	if (fhs_write_atomic(SYNTHETIC_CONF, out, outlen, 0644) != 0) {
+		fhs_err("cannot write %s: %s", SYNTHETIC_CONF, strerror(errno));
 		goto done;
 	}
 
@@ -330,7 +330,7 @@ msl_skeleton_remove_at(const char *name, const char *target)
 	 * whatever the user mounted or created there, and deleting a directory
 	 * because a configuration line went away would be a poor trade.
 	 */
-	msl_log("removed the /%s declaration from %s (effective after a reboot)",
+	fhs_log("removed the /%s declaration from %s (effective after a reboot)",
 	    name, SYNTHETIC_CONF);
 	rc = 1;
 
@@ -341,11 +341,11 @@ done:
 }
 
 bool
-msl_skeleton_reboot_pending_at(const char *name, const char *target)
+fhs_skeleton_reboot_pending_at(const char *name, const char *target)
 {
-	struct msl_skeleton_status st;
+	struct fhs_skeleton_status st;
 
-	if (msl_skeleton_status_at(name, target, &st) != 0)
+	if (fhs_skeleton_status_at(name, target, &st) != 0)
 		return false;
 
 	return st.declared && !st.conflicting && !st.active;
@@ -357,7 +357,7 @@ msl_skeleton_reboot_pending_at(const char *name, const char *target)
  * ------------------------------------------------------------------------- */
 
 int
-msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
+fhs_skeleton_status(const char *name, struct fhs_skeleton_status *st)
 {
 	char target[PATH_MAX];
 
@@ -368,11 +368,11 @@ msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
 	}
 
 	target_for(name, target, sizeof(target));
-	return msl_skeleton_status_at(name, target, st);
+	return fhs_skeleton_status_at(name, target, st);
 }
 
 int
-msl_skeleton_add(const char *name)
+fhs_skeleton_add(const char *name)
 {
 	char target[PATH_MAX];
 
@@ -382,11 +382,11 @@ msl_skeleton_add(const char *name)
 	}
 
 	target_for(name, target, sizeof(target));
-	return msl_skeleton_add_at(name, target, true);
+	return fhs_skeleton_add_at(name, target, true);
 }
 
 int
-msl_skeleton_remove(const char *name)
+fhs_skeleton_remove(const char *name)
 {
 	char target[PATH_MAX];
 
@@ -396,11 +396,11 @@ msl_skeleton_remove(const char *name)
 	}
 
 	target_for(name, target, sizeof(target));
-	return msl_skeleton_remove_at(name, target);
+	return fhs_skeleton_remove_at(name, target);
 }
 
 bool
-msl_skeleton_reboot_pending(const char *name)
+fhs_skeleton_reboot_pending(const char *name)
 {
 	char target[PATH_MAX];
 
@@ -408,5 +408,5 @@ msl_skeleton_reboot_pending(const char *name)
 		return false;
 
 	target_for(name, target, sizeof(target));
-	return msl_skeleton_reboot_pending_at(name, target);
+	return fhs_skeleton_reboot_pending_at(name, target);
 }

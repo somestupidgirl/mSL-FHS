@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# mSL/XNU installer postinstall.
+# mSL/FHS installer postinstall.
 #
-# The payload - mslctl, mslxd, the LaunchDaemon plist, mSL.app and
-# mSL.prefPane - has already been laid down with root:wheel ownership. What is
+# The payload - fhsctl, fhsxd, the LaunchDaemon plist, FHS.app and
+# FHS.prefPane - has already been laid down with root:wheel ownership. What is
 # left is the part that is not a file copy: starting the daemon and putting the
 # menu-bar app on screen.
 #
@@ -17,12 +17,12 @@
 #
 set -e
 
-DAEMON=com.beako.mslxd
-PLIST=/Library/LaunchDaemons/com.beako.mslxd.plist
-APP=/Applications/mSL.app
+DAEMON=com.beako.fhsxd
+PLIST=/Library/LaunchDaemons/com.beako.fhsxd.plist
+APP=/Applications/mSL/FHS.app
 
 # Clear any stale `launchctl disable` override, which persists across boots and
-# would otherwise keep mslxd from ever starting.
+# would otherwise keep fhsxd from ever starting.
 launchctl enable "system/$DAEMON" 2>/dev/null || true
 
 # Replace a running instance from an earlier version, then start.

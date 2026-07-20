@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_detect.h
+ * fhs_detect.h
  *
  * Detection of the pseudo-filesystems that supply the dynamic parts of a Linux
  * tree - /proc (procfs) and /sys (sysfs).
@@ -14,12 +14,12 @@
  * Three states are distinguished because each calls for different guidance -
  * absent (install it), installed but unmounted (mount it), and mounted.
  */
-#ifndef MSL_DETECT_H
-#define MSL_DETECT_H
+#ifndef FHS_DETECT_H
+#define FHS_DETECT_H
 
 #include <stdbool.h>
 
-struct msl_pseudofs {
+struct fhs_pseudofs {
 	const char *name;       /* "procfs" / "sysfs" */
 	const char *mountpoint; /* "/proc" / "/sys" */
 	bool installed;         /* the filesystem bundle or kext is present */
@@ -27,10 +27,10 @@ struct msl_pseudofs {
 };
 
 /* Fill in the state of /proc. */
-void msl_detect_procfs(struct msl_pseudofs *fs);
+void fhs_detect_procfs(struct fhs_pseudofs *fs);
 
 /* Fill in the state of /sys. */
-void msl_detect_sysfs(struct msl_pseudofs *fs);
+void fhs_detect_sysfs(struct fhs_pseudofs *fs);
 
 /*
  * Fill in the state of /dev.
@@ -39,9 +39,9 @@ void msl_detect_sysfs(struct msl_pseudofs *fs);
  * procfs and sysfs there is no bundle or extension to look for: it is always
  * present, and the only question is whether it is mounted.
  */
-void msl_detect_devfs(struct msl_pseudofs *fs);
+void fhs_detect_devfs(struct fhs_pseudofs *fs);
 
 /* Is the mSL layout daemon running? */
-bool msl_daemon_running(void);
+bool fhs_daemon_running(void);
 
-#endif /* MSL_DETECT_H */
+#endif /* FHS_DETECT_H */

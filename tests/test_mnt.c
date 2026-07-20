@@ -10,7 +10,7 @@
  *
  * The implementation is #included to reach the static helper.
  */
-#include "msl_mnt.c"
+#include "fhs_mnt.c"
 
 static int failures;
 
@@ -30,7 +30,7 @@ expect(const char *mp, const char *want)
 int
 main(void)
 {
-	msl_set_quiet(true);
+	fhs_set_quiet(true);
 
 	/* Direct children under /mnt, both spellings the kernel might record. */
 	expect("/mnt/disk1", "disk1");

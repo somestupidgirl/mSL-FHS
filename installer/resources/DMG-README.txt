@@ -1,4 +1,4 @@
-mSL/XNU - macOS Subsystem for Linux / X is Now UNIX
+mSL/FHS - macOS Subsystem for Linux / X is Now UNIX
 ===================================================
 
 A filesystem-layout compatibility layer that presents macOS through a
@@ -8,7 +8,7 @@ filesystem. No container, no virtual machine, no kernel extension.
 INSTALL
     Open the .pkg and follow the installer.
 
-    Nothing is enabled by the install. Open System Settings -> mSL/XNU, or
+    Nothing is enabled by the install. Open System Settings -> mSL/FHS, or
     the menu-bar icon, and switch on what you want.
 
     /home applies immediately. /mnt and /media appear after a restart -
@@ -20,15 +20,15 @@ UNINSTALL
     and then removes the installed files.
 
 WHAT GETS INSTALLED
-    /usr/local/sbin/mslctl                       command-line control
-    /usr/local/sbin/mslxd                        layout daemon
-    /Library/LaunchDaemons/com.beako.mslxd.plist daemon launchd job
-    /Applications/mSL.app                        menu-bar app
-    /Library/PreferencePanes/mSL.prefPane        System Settings pane
+    /usr/local/sbin/fhsctl                       command-line control
+    /usr/local/sbin/fhsxd                        layout daemon
+    /Library/LaunchDaemons/com.beako.fhsxd.plist daemon launchd job
+    /Applications/mSL/FHS.app                    menu-bar app
+    /Library/PreferencePanes/FHS.prefPane        System Settings pane
 
 WHAT IT CHANGES, ONLY WHEN YOU ENABLE A COMPONENT
     /home    comments out the auto_home line in /etc/auto_master (a pristine
-             copy is kept at /var/db/msl.auto_master.orig) and creates
+             copy is kept at /var/db/fhs.auto_master.orig) and creates
              symlinks to /Users
     /mnt     adds an /etc/synthetic.conf entry; the directory stays empty,
              which is what /mnt is on Linux
@@ -40,4 +40,4 @@ REQUIREMENTS
     Reduced Security, no SIP changes.
 
 The pseudo-filesystems that supply /proc and /sys are separate projects with
-their own installers. mSL/XNU reports their state but never manages them.
+their own installers. mSL/FHS reports their state but never manages them.

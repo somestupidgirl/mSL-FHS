@@ -1,4 +1,4 @@
-# mSL/XNU
+# mSL/FHS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey)](#requirements)
@@ -6,7 +6,7 @@
 **macOS Subsystem for Linux / X is Now UNIX** — a filesystem-layout compatibility
 layer that presents macOS through a Linux-shaped namespace.
 
-## What is mSL/XNU?
+## What is mSL/FHS?
 
 macOS is a certified UNIX, and nearly everything a Linux program expects from the
 filesystem is already present on the machine — it is simply in a different place,
@@ -14,7 +14,7 @@ under a different name, or hidden from view. Home directories live in `/Users`
 rather than `/home`. Mounted volumes appear in `/Volumes` rather than `/media`.
 `/proc` and `/sys` do not exist at all.
 
-mSL/XNU closes that gap at the namespace level. It is **not** a container, an
+mSL/FHS closes that gap at the namespace level. It is **not** a container, an
 emulator, or a virtual machine: there is no second kernel and no translation
 layer. The processes are macOS processes, the filesystems are macOS filesystems,
 and the kernel is XNU. Only the *shape* of the namespace changes, so that a
@@ -33,7 +33,7 @@ independently:
   [procfs](https://github.com/somestupidgirl/procfs_kext) for `/proc`, and a
   planned `sysfs` for `/sys`.
 
-mSL/XNU **detects and reports** the status of the pseudo-filesystems, but never
+mSL/FHS **detects and reports** the status of the pseudo-filesystems, but never
 mounts, unmounts, or configures them — each keeps its own installer and its own
 toggles. This avoids two applications fighting over the same mount point and
 reporting state that contradicts reality.
@@ -59,14 +59,14 @@ two:
 | Tier | What it is | When it changes | In the toggle? |
 |------|------------|-----------------|----------------|
 | **Skeleton** | The root-level entries themselves (`/home`, `/mnt`, `/media`, …), created as symlinks by `synthetic.conf` | Install time only; **requires a reboot** | No |
-| **Contents** | What lives inside them — the per-user and per-volume symlinks, maintained by `mslxd` | Continuously, at runtime | Yes |
+| **Contents** | What lives inside them — the per-user and per-volume symlinks, maintained by `fhsxd` | Continuously, at runtime | Yes |
 
 The skeleton is inert. A `/media` symlink pointing at an empty directory is
 indistinguishable, to any program, from a system that never had `/media` — so
 leaving it in place while the layer is switched off costs nothing. All the
 observable behaviour lives in the contents tier, which is fully dynamic.
 
-The practical consequence: **installing mSL/XNU requires one reboot, and so does
+The practical consequence: **installing mSL/FHS requires one reboot, and so does
 adding a new root-level directory later.** Everything else — enabling a
 component, disabling it, uninstalling the layer's effects — happens live. This is
 a real limitation of the platform rather than of the implementation, and the
@@ -144,11 +144,11 @@ macOS puts *everything* in `/Volumes` — internal volumes, network shares, moun
 disk images, and removable devices, flat and without user attribution — whereas
 Linux's `/media/<user>/<label>` contains only removable media mounted by that
 user's session. Reproducing it faithfully means filtering by device class and
-matching udisks2's naming rules, which is what `mslxd` does.
+matching udisks2's naming rules, which is what `fhsxd` does.
 
 ### Components at runtime
 
-`mslxd` is a root LaunchDaemon (`KeepAlive`), mirroring the `procfsd` design:
+`fhsxd` is a root LaunchDaemon (`KeepAlive`), mirroring the `procfsd` design:
 
 - Reconciles every enabled component at startup — the boot-time restore
 - Subscribes to DiskArbitration and keeps `/media` in step as volumes appear
@@ -161,7 +161,7 @@ matching udisks2's naming rules, which is what `mslxd` does.
 It holds **no state of its own**. Every wakeup re-reads the system and
 reconciles, so a missed event is corrected by the next one rather than leaving
 the daemon permanently out of step, and `KeepAlive` restarting it is always
-safe. It also calls the same sync functions `mslctl` does, so the two can never
+safe. It also calls the same sync functions `fhsctl` does, so the two can never
 disagree about what should exist.
 
 Mounting one volume produces several DiskArbitration callbacks — appeared, then
@@ -181,14 +181,14 @@ process accepting reconfiguration commands over a socket, and any peer policy
 permissive enough to be convenient would also let anything running as the user
 silently remask `/etc/auto_master`. The prompt is not only an access check: it
 is what makes a change to the system visible and attributable to the person
-making it. `mslxd`'s command surface stays closed.
+making it. `fhsxd`'s command surface stays closed.
 
 ## Interface
 
 **Menu bar app** — live status for each component and the detected
 pseudo-filesystems, one-click toggles, and quick access to preferences.
 
-**Preference pane** (`/Library/PreferencePanes/mSL.prefPane`) — per-component
+**Preference pane** (`/Library/PreferencePanes/FHS.prefPane`) — per-component
 enable/disable, start-at-boot, and update settings.
 
 Both read state live rather than caching it, so they never disagree with the
@@ -220,12 +220,12 @@ edits system configuration — every component adds an entry to
 machine whose setup it has not inspected, would be taking a decision that
 belongs to the person running it.
 
-Turn components on in **System Settings → mSL/XNU**, or from the menu bar, or:
+Turn components on in **System Settings → mSL/FHS**, or from the menu bar, or:
 
 ```sh
-mslctl status       # what is on, and what state it is in
-mslctl home check   # is /home safe to enable on this machine?
-sudo mslctl home enable
+fhsctl status       # what is on, and what state it is in
+fhsctl home check   # is /home safe to enable on this machine?
+sudo fhsctl home enable
 ```
 
 All three appear after a restart: macOS creates root-level entries only at
@@ -235,9 +235,9 @@ place when the directories appear.
 To show or hide the root-level directories in the Finder:
 
 ```sh
-mslctl vis                    # every node, and whether it can be changed
-sudo mslctl vis show opt
-sudo mslctl vis hide opt
+fhsctl vis                    # every node, and whether it can be changed
+sudo fhsctl vis show opt
+sudo fhsctl vis hide opt
 ```
 
 To build a distributable installer:
@@ -254,7 +254,7 @@ source. Both switch every component off *before* removing anything — disabling
 is what restores `/etc/auto_master` and drops the `synthetic.conf` entries, so
 removing the tools first would strand the system with a masked automounter line
 and no supported way to restore it. A pristine copy of `/etc/auto_master` is
-kept at `/var/db/msl.auto_master.orig` regardless.
+kept at `/var/db/fhs.auto_master.orig` regardless.
 
 ## Status
 
@@ -268,8 +268,8 @@ Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 | `/root` `/run` | **Working** — name the existing `/var/root` and `/var/run` |
 | `/srv` | **Working** — empty, as on Linux |
 | Finder visibility | **Working** — for the nodes macOS permits; see below |
-| `mslctl` | **Working** — CLI control for the layer |
-| `mslxd` | **Working** — boot restore, live volume tracking, console-user changes |
+| `fhsctl` | **Working** — CLI control for the layer |
+| `fhsxd` | **Working** — boot restore, live volume tracking, console-user changes |
 | Menu bar app | **Working** — per-node dropdowns |
 | Preference pane | **Working** — batched Apply |
 | Installer | **Working** — `make dmg`, with an uninstaller |
@@ -279,7 +279,7 @@ Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 ### Finder visibility
 
 macOS hides most root-level directories from the Finder with the `UF_HIDDEN`
-file flag. mSL/XNU can clear it — but only where the platform permits, and which
+file flag. mSL/FHS can clear it — but only where the platform permits, and which
 those are is not apparent from the path. Measured, not assumed:
 
 | Nodes | Result |

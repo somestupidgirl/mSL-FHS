@@ -1,19 +1,19 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * mslxd.c
+ * fhsxd.c
  *
  * The mSL/XNU layout daemon.
  *
- * Everything the layer does can be driven by hand with mslctl; this daemon
+ * Everything the layer does can be driven by hand with fhsctl; this daemon
  * exists to do it at the right moments. It has three jobs:
  *
- *   Restore state at boot. Component enable flags live in /var/db/msl.*, and
+ *   Restore state at boot. Component enable flags live in /var/db/fhs.*, and
  *   the symlink farms have to be rebuilt to match whatever is mounted and
  *   whichever accounts exist now.
  *
  *   Track volumes as they come and go. Without this, every eject leaves a
- *   dangling link in /media until someone runs `mslctl media sync` by hand -
+ *   dangling link in /media until someone runs `fhsctl media sync` by hand -
  *   which is not an edge case but the normal result of unmounting anything.
  *
  *   Follow the console user. /media is attributed per user, so a login, logout
@@ -22,14 +22,14 @@
  * It deliberately holds no state of its own. Every wakeup re-reads the world
  * and reconciles, so a missed event is corrected by the next one rather than
  * leaving the daemon's idea of the system permanently out of step. That also
- * means mslctl and mslxd cannot disagree: both call the same sync functions.
+ * means fhsctl and fhsxd cannot disagree: both call the same sync functions.
  *
  * Run as a root LaunchDaemon (KeepAlive), mirroring procfsd.
  */
-#include "msl.h"
-#include "msl_boot.h"
-#include "msl_home.h"
-#include "msl_media.h"
+#include "fhs.h"
+#include "fhs_boot.h"
+#include "fhs_home.h"
+#include "fhs_media.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -42,8 +42,8 @@
 #include <DiskArbitration/DiskArbitration.h>
 #include <SystemConfiguration/SystemConfiguration.h>
 
-#ifndef MSL_VERSION
-#define MSL_VERSION "0.0.0"
+#ifndef FHS_VERSION
+#define FHS_VERSION "0.0.0"
 #endif
 
 /*
@@ -89,21 +89,21 @@ static CFRunLoopTimerRef s_coalesce;    /* non-NULL while a reconcile is pending
 static void
 reconcile(const char *why)
 {
-	msl_log("mslxd: reconciling (%s)", why);
+	fhs_log("fhsxd: reconciling (%s)", why);
 
-	if (msl_home_sync() != 0)
-		msl_err("mslxd: /home sync failed");
+	if (fhs_home_sync() != 0)
+		fhs_err("fhsxd: /home sync failed");
 
-	if (msl_media_sync() != 0)
-		msl_err("mslxd: /media sync failed");
+	if (fhs_media_sync() != 0)
+		fhs_err("fhsxd: /media sync failed");
 
 	/*
 	 * /boot changes only when macOS is updated, but that is exactly when its
 	 * links would otherwise be left pointing at a kernel version that no
 	 * longer exists.
 	 */
-	if (msl_boot_sync() != 0)
-		msl_err("mslxd: /boot sync failed");
+	if (fhs_boot_sync() != 0)
+		fhs_err("fhsxd: /boot sync failed");
 }
 
 static void
@@ -216,7 +216,7 @@ watch_console_user(void)
 	CFRunLoopSourceRef source;
 	bool ok = false;
 
-	store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("mslxd"),
+	store = SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("fhsxd"),
 	    console_user_changed, NULL);
 	if (store == NULL)
 		return false;
@@ -259,17 +259,17 @@ main(int argc, char **argv)
 	CFRunLoopTimerRef periodic, settle;
 
 	if (argc > 1 && strcmp(argv[1], "--version") == 0) {
-		printf("mslxd %s\n", MSL_VERSION);
+		printf("fhsxd %s\n", FHS_VERSION);
 		return 0;
 	}
 
-	if (!msl_is_root()) {
-		msl_err("mslxd must run as root");
+	if (!fhs_is_root()) {
+		fhs_err("fhsxd must run as root");
 		return 1;
 	}
 
 	setvbuf(stderr, NULL, _IOLBF, 0);	/* line-buffered for the log file */
-	msl_log("mslxd %s starting", MSL_VERSION);
+	fhs_log("fhsxd %s starting", FHS_VERSION);
 
 	signal(SIGTERM, on_signal);
 	signal(SIGINT, on_signal);
@@ -284,7 +284,7 @@ main(int argc, char **argv)
 
 	session = DASessionCreate(kCFAllocatorDefault);
 	if (session == NULL) {
-		msl_err("mslxd: cannot create a DiskArbitration session");
+		fhs_err("fhsxd: cannot create a DiskArbitration session");
 		return 1;
 	}
 
@@ -295,7 +295,7 @@ main(int argc, char **argv)
 		 * Not fatal. Without it, a fast user switch is picked up by the
 		 * periodic reconcile instead of immediately.
 		 */
-		msl_err("mslxd: cannot watch the console user; "
+		fhs_err("fhsxd: cannot watch the console user; "
 		    "falling back to periodic reconcile");
 	}
 
@@ -317,10 +317,10 @@ main(int argc, char **argv)
 		CFRelease(settle);
 	}
 
-	msl_log("mslxd: watching for volume and session changes");
+	fhs_log("fhsxd: watching for volume and session changes");
 	CFRunLoopRun();
 
-	msl_log("mslxd: stopping");
+	fhs_log("fhsxd: stopping");
 	DASessionUnscheduleFromRunLoop(session, CFRunLoopGetCurrent(),
 	    kCFRunLoopDefaultMode);
 	CFRelease(session);

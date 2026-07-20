@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_media.c
+ * fhs_media.c
  *
  * The /media component.
  *
@@ -23,12 +23,12 @@
  *   approximation otherwise; see docs/LAYOUT.md.
  *
  * Enumeration here is synchronous (getmntinfo + a DiskArbitration query per
- * volume), which is what a one-shot `mslctl media sync` needs. The daemon will
+ * volume), which is what a one-shot `fhsctl media sync` needs. The daemon will
  * add DARegisterDiskAppearedCallback and friends on top of the same filter, so
  * the two can never disagree about what belongs in /media.
  */
-#include "msl.h"
-#include "msl_media.h"
+#include "fhs.h"
+#include "fhs_media.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -48,7 +48,7 @@
 #define VOLUMES_ROOT    "/Volumes/"
 
 #ifndef MEDIA_ROOT
-#define MEDIA_ROOT      MSL_DATA_ROOT "/media"
+#define MEDIA_ROOT      FHS_DATA_ROOT "/media"
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@
  * would add risk rather than fidelity.
  */
 bool
-msl_media_sanitise(const char *name, char *out, size_t outsz)
+fhs_media_sanitise(const char *name, char *out, size_t outsz)
 {
 	size_t n = 0;
 	bool any = false;
@@ -169,7 +169,7 @@ admit(DADiskRef disk, const char *mountpoint)
 
 /* Has this sanitised label already been used? udisks2 disambiguates with _N. */
 static void
-deduplicate(struct msl_volume *vols, int count, char *label, size_t labelsz)
+deduplicate(struct fhs_volume *vols, int count, char *label, size_t labelsz)
 {
 	char base[MAXPATHLEN];
 	int suffix = 1;
@@ -194,7 +194,7 @@ deduplicate(struct msl_volume *vols, int count, char *label, size_t labelsz)
 }
 
 int
-msl_media_scan(struct msl_volume *out, int max)
+fhs_media_scan(struct fhs_volume *out, int max)
 {
 	struct statfs *mounts;
 	DASessionRef session;
@@ -243,7 +243,7 @@ msl_media_scan(struct msl_volume *out, int max)
 		name = strrchr(mp, '/');
 		name = (name != NULL) ? name + 1 : mp;
 
-		if (!msl_media_sanitise(name, label, sizeof(label)))
+		if (!fhs_media_sanitise(name, label, sizeof(label)))
 			continue;
 
 		deduplicate(out, count, label, sizeof(label));
@@ -318,7 +318,7 @@ ours(const char *path, char *target, size_t target_len)
 
 /* Remove symlinks under `dir` that are ours but not in `keep`. */
 static int
-prune(const char *dir, const struct msl_volume *keep, int nkeep)
+prune(const char *dir, const struct fhs_volume *keep, int nkeep)
 {
 	DIR *d;
 	struct dirent *ent;
@@ -352,11 +352,11 @@ prune(const char *dir, const struct msl_volume *keep, int nkeep)
 			continue;
 
 		if (unlink(path) != 0) {
-			msl_err("cannot remove %s: %s", path, strerror(errno));
+			fhs_err("cannot remove %s: %s", path, strerror(errno));
 			continue;
 		}
 
-		msl_log("  unlinked %s", path);
+		fhs_log("  unlinked %s", path);
 		removed++;
 	}
 
@@ -365,18 +365,18 @@ prune(const char *dir, const struct msl_volume *keep, int nkeep)
 }
 
 int
-msl_media_sync(void)
+fhs_media_sync(void)
 {
-	struct msl_volume vols[64];
+	struct fhs_volume vols[64];
 	char user[256], dir[MAXPATHLEN], path[MAXPATHLEN], target[MAXPATHLEN];
 	int n;
 
-	if (!msl_is_root()) {
-		msl_err("syncing /media requires root");
+	if (!fhs_is_root()) {
+		fhs_err("syncing /media requires root");
 		return -1;
 	}
 
-	if (msl_state_get(MSL_MEDIA_STATE, 0) == 0)
+	if (fhs_state_get(FHS_MEDIA_STATE, 0) == 0)
 		return 0;	/* component is off */
 
 	if (!console_user(user, sizeof(user))) {
@@ -385,24 +385,24 @@ msl_media_sync(void)
 		 * Existing links are left in place rather than torn down: the user is
 		 * most likely between sessions, and their media has not gone anywhere.
 		 */
-		msl_log("no console user; leaving /media unchanged");
+		fhs_log("no console user; leaving /media unchanged");
 		return 0;
 	}
 
 	if (mkdir(MEDIA_ROOT, 0755) != 0 && errno != EEXIST) {
-		msl_err("cannot create %s: %s", MEDIA_ROOT, strerror(errno));
+		fhs_err("cannot create %s: %s", MEDIA_ROOT, strerror(errno));
 		return -1;
 	}
 
 	snprintf(dir, sizeof(dir), "%s/%s", MEDIA_ROOT, user);
 	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
-		msl_err("cannot create %s: %s", dir, strerror(errno));
+		fhs_err("cannot create %s: %s", dir, strerror(errno));
 		return -1;
 	}
 
-	n = msl_media_scan(vols, (int)(sizeof(vols) / sizeof(vols[0])));
+	n = fhs_media_scan(vols, (int)(sizeof(vols) / sizeof(vols[0])));
 	if (n < 0) {
-		msl_err("cannot enumerate volumes");
+		fhs_err("cannot enumerate volumes");
 		return -1;
 	}
 
@@ -417,23 +417,23 @@ msl_media_sync(void)
 				continue;	/* already correct */
 
 			if (!ours(path, target, sizeof(target))) {
-				msl_err("skipping %s: not a symlink of ours", path);
+				fhs_err("skipping %s: not a symlink of ours", path);
 				continue;
 			}
 
 			if (unlink(path) != 0) {
-				msl_err("cannot replace %s: %s", path, strerror(errno));
+				fhs_err("cannot replace %s: %s", path, strerror(errno));
 				continue;
 			}
 		}
 
 		if (symlink(vols[i].path, path) != 0) {
-			msl_err("cannot create %s -> %s: %s", path, vols[i].path,
+			fhs_err("cannot create %s -> %s: %s", path, vols[i].path,
 			    strerror(errno));
 			continue;
 		}
 
-		msl_log("  linked %s -> %s", path, vols[i].path);
+		fhs_log("  linked %s -> %s", path, vols[i].path);
 	}
 
 	prune(dir, vols, n);
@@ -445,9 +445,9 @@ msl_media_sync(void)
  * ------------------------------------------------------------------------- */
 
 int
-msl_media_status(struct msl_media_status *st)
+fhs_media_status(struct fhs_media_status *st)
 {
-	struct msl_volume vols[64];
+	struct fhs_volume vols[64];
 	char dir[MAXPATHLEN], path[MAXPATHLEN], target[MAXPATHLEN];
 	DIR *d;
 	struct dirent *ent;
@@ -455,19 +455,19 @@ msl_media_status(struct msl_media_status *st)
 
 	memset(st, 0, sizeof(*st));
 
-	st->enabled = msl_state_get(MSL_MEDIA_STATE, 0) != 0;
+	st->enabled = fhs_state_get(FHS_MEDIA_STATE, 0) != 0;
 
-	if (msl_skeleton_status(MSL_MEDIA_NAME, &st->skel) != 0)
+	if (fhs_skeleton_status(FHS_MEDIA_NAME, &st->skel) != 0)
 		return -1;
 
-	st->reboot_pending = msl_skeleton_reboot_pending(MSL_MEDIA_NAME);
+	st->reboot_pending = fhs_skeleton_reboot_pending(FHS_MEDIA_NAME);
 
 	if (console_user(st->user, sizeof(st->user)))
 		snprintf(dir, sizeof(dir), "%s/%s", MEDIA_ROOT, st->user);
 	else
 		dir[0] = '\0';
 
-	n = msl_media_scan(vols, (int)(sizeof(vols) / sizeof(vols[0])));
+	n = fhs_media_scan(vols, (int)(sizeof(vols) / sizeof(vols[0])));
 	st->volumes = (n < 0) ? 0 : n;
 
 	if (dir[0] != '\0' && (d = opendir(dir)) != NULL) {
@@ -497,59 +497,59 @@ msl_media_status(struct msl_media_status *st)
 }
 
 int
-msl_media_enable(void)
+fhs_media_enable(void)
 {
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("enabling /media requires root");
+	if (!fhs_is_root()) {
+		fhs_err("enabling /media requires root");
 		return -1;
 	}
 
-	rc = msl_skeleton_add(MSL_MEDIA_NAME);
+	rc = fhs_skeleton_add(FHS_MEDIA_NAME);
 	if (rc < 0)
 		return -1;
 
-	if (msl_state_set(MSL_MEDIA_STATE, 1) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_MEDIA_STATE, 1) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	if (rc == 1)
-		msl_log("/media will appear after the next reboot.");
+		fhs_log("/media will appear after the next reboot.");
 
 	/*
 	 * Populate now regardless. The symlinks live on the Data volume and can be
 	 * built before the root entry exists, so everything is already in place
 	 * when the reboot makes /media reachable.
 	 */
-	return msl_media_sync();
+	return fhs_media_sync();
 }
 
 int
-msl_media_disable(void)
+fhs_media_disable(void)
 {
 	char user[256], dir[MAXPATHLEN];
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("disabling /media requires root");
+	if (!fhs_is_root()) {
+		fhs_err("disabling /media requires root");
 		return -1;
 	}
 
 	if (console_user(user, sizeof(user))) {
 		snprintf(dir, sizeof(dir), "%s/%s", MEDIA_ROOT, user);
-		msl_log("removing symlinks from %s", dir);
+		fhs_log("removing symlinks from %s", dir);
 		prune(dir, NULL, 0);
 	}
 
-	rc = msl_skeleton_remove(MSL_MEDIA_NAME);
+	rc = fhs_skeleton_remove(FHS_MEDIA_NAME);
 	if (rc < 0)
 		return -1;
 
-	if (msl_state_set(MSL_MEDIA_STATE, 0) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_MEDIA_STATE, 0) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	if (rc == 1)
-		msl_log("/media will disappear after the next reboot.");
+		fhs_log("/media will disappear after the next reboot.");
 
 	return 0;
 }

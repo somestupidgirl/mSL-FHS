@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_mnt.h
+ * fhs_mnt.h
  *
  * The /mnt component: a directory for manual, temporary mounts, exactly as the
  * FHS defines it.
@@ -19,31 +19,31 @@
  * would produce a directory of automatically-appearing volumes that no Linux
  * system has, while duplicating and mis-implementing /media's job.
  */
-#ifndef MSL_MNT_H
-#define MSL_MNT_H
+#ifndef FHS_MNT_H
+#define FHS_MNT_H
 
 #include <sys/param.h>
 
-#include "msl_skeleton.h"
+#include "fhs_skeleton.h"
 
-#define MSL_MNT_STATE   "msl.mnt"
-#define MSL_MNT_NAME    "mnt"
+#define FHS_MNT_STATE   "fhs.mnt"
+#define FHS_MNT_NAME    "mnt"
 
 /* A filesystem an administrator has mounted somewhere under /mnt. */
-struct msl_mnt_mount {
+struct fhs_mnt_mount {
 	char name[128];             /* the mount point's name, e.g. "disk1" */
 	char path[MAXPATHLEN];      /* normalised to /mnt/<name> */
 	char fstype[16];            /* e.g. "apfs", "msdos", "ntfs" */
 };
 
-struct msl_mnt_status {
+struct fhs_mnt_status {
 	bool enabled;                       /* persisted enable flag */
 	bool reboot_pending;                /* declared, but not yet live at / */
-	struct msl_skeleton_status skel;
+	struct fhs_skeleton_status skel;
 	int  mounts;                        /* filesystems mounted under /mnt */
 };
 
-int msl_mnt_status(struct msl_mnt_status *st);
+int fhs_mnt_status(struct fhs_mnt_status *st);
 
 /*
  * Enumerate the filesystems mounted directly under /mnt (each /mnt/<name>).
@@ -53,12 +53,12 @@ int msl_mnt_status(struct msl_mnt_status *st);
  * kernel under either path depending on how it was requested; both are matched
  * and reported normalised to /mnt/<name>.
  */
-int msl_mnt_scan(struct msl_mnt_mount *out, int max);
+int fhs_mnt_scan(struct fhs_mnt_mount *out, int max);
 
 /* Declare the skeleton entry. Requires root; takes effect after a reboot. */
-int msl_mnt_enable(void);
+int fhs_mnt_enable(void);
 
 /* Remove the declaration. Requires root; takes effect after a reboot. */
-int msl_mnt_disable(void);
+int fhs_mnt_disable(void);
 
-#endif /* MSL_MNT_H */
+#endif /* FHS_MNT_H */

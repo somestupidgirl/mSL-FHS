@@ -19,14 +19,14 @@
  *
  * The implementation is #included to reach its static helpers.
  */
-#include "msl_visibility.c"
+#include "fhs_visibility.c"
 
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 
 #ifndef TEST_SCRATCH
-#define TEST_SCRATCH "/tmp/msl-vis-test"
+#define TEST_SCRATCH "/tmp/fhs-vis-test"
 #endif
 
 static int failures;
@@ -42,12 +42,12 @@ check(const char *what, bool ok)
 }
 
 static void
-check_lock(const char *path, enum msl_vis_lock want, const char *label)
+check_lock(const char *path, enum fhs_vis_lock want, const char *label)
 {
-	struct msl_vis_status st;
+	struct fhs_vis_status st;
 	char desc[160];
 
-	if (msl_vis_status(path, &st) != 0) {
+	if (fhs_vis_status(path, &st) != 0) {
 		snprintf(desc, sizeof(desc), "%s: status readable", path);
 		check(desc, false);
 		return;
@@ -66,31 +66,31 @@ scratch_path(char *buf, size_t n, const char *name)
 int
 main(void)
 {
-	struct msl_vis_status st;
+	struct fhs_vis_status st;
 	char dir[512], link[512], target[512], reason[512];
 	int fd;
 
-	msl_set_quiet(true);
+	fhs_set_quiet(true);
 
 	/* --- node table ---------------------------------------------------- */
-	check("finds a node by full path",       msl_node_find("/opt") != NULL);
-	check("finds a node by bare name",       msl_node_find("opt") != NULL);
-	check("bare and full name agree",        msl_node_find("opt") == msl_node_find("/opt"));
-	check("rejects an unknown node",         msl_node_find("/nonesuch") == NULL);
-	check("rejects an empty name",           msl_node_find("") == NULL);
-	check("rejects NULL",                    msl_node_find(NULL) == NULL);
-	check("a partial name does not match",   msl_node_find("op") == NULL);
-	check("/dev is in the table",            msl_node_find("/dev") != NULL);
-	check("Linux-only nodes are marked",     msl_node_find("/media")->linux_only);
-	check("native nodes are not",            !msl_node_find("/usr")->linux_only);
+	check("finds a node by full path",       fhs_node_find("/opt") != NULL);
+	check("finds a node by bare name",       fhs_node_find("opt") != NULL);
+	check("bare and full name agree",        fhs_node_find("opt") == fhs_node_find("/opt"));
+	check("rejects an unknown node",         fhs_node_find("/nonesuch") == NULL);
+	check("rejects an empty name",           fhs_node_find("") == NULL);
+	check("rejects NULL",                    fhs_node_find(NULL) == NULL);
+	check("a partial name does not match",   fhs_node_find("op") == NULL);
+	check("/dev is in the table",            fhs_node_find("/dev") != NULL);
+	check("Linux-only nodes are marked",     fhs_node_find("/media")->linux_only);
+	check("native nodes are not",            !fhs_node_find("/usr")->linux_only);
 
 	/* Every lock value must have a reason; only CHANGEABLE has none. */
-	check("CHANGEABLE has no reason",   msl_vis_lock_reason(MSL_VIS_CHANGEABLE) == NULL);
-	check("ABSENT has a reason",        msl_vis_lock_reason(MSL_VIS_ABSENT) != NULL);
-	check("SIP has a reason",           msl_vis_lock_reason(MSL_VIS_SIP) != NULL);
-	check("READONLY has a reason",      msl_vis_lock_reason(MSL_VIS_READONLY) != NULL);
-	check("UNSUPPORTED has a reason",   msl_vis_lock_reason(MSL_VIS_UNSUPPORTED) != NULL);
-	check("PROTECTED has a reason",     msl_vis_lock_reason(MSL_VIS_PROTECTED) != NULL);
+	check("CHANGEABLE has no reason",   fhs_vis_lock_reason(FHS_VIS_CHANGEABLE) == NULL);
+	check("ABSENT has a reason",        fhs_vis_lock_reason(FHS_VIS_ABSENT) != NULL);
+	check("SIP has a reason",           fhs_vis_lock_reason(FHS_VIS_SIP) != NULL);
+	check("READONLY has a reason",      fhs_vis_lock_reason(FHS_VIS_READONLY) != NULL);
+	check("UNSUPPORTED has a reason",   fhs_vis_lock_reason(FHS_VIS_UNSUPPORTED) != NULL);
+	check("PROTECTED has a reason",     fhs_vis_lock_reason(FHS_VIS_PROTECTED) != NULL);
 
 	/* --- mutation, on files we own ------------------------------------- */
 	mkdir(TEST_SCRATCH, 0755);
@@ -100,24 +100,24 @@ main(void)
 	check("scratch directory created",       mkdir(dir, 0755) == 0);
 
 	check("a new directory is not hidden",
-	    msl_vis_status(dir, &st) == 0 && st.exists && !st.hidden);
-	check("a plain directory is changeable", st.lock == MSL_VIS_CHANGEABLE);
+	    fhs_vis_status(dir, &st) == 0 && st.exists && !st.hidden);
+	check("a plain directory is changeable", st.lock == FHS_VIS_CHANGEABLE);
 	check("a plain directory is not a symlink", !st.symlink);
 
-	check("hiding succeeds",                 msl_vis_set(dir, true, reason, sizeof(reason)) == 0);
+	check("hiding succeeds",                 fhs_vis_set(dir, true, reason, sizeof(reason)) == 0);
 	check("it now reads as hidden",
-	    msl_vis_status(dir, &st) == 0 && st.hidden);
-	check("hiding again is a no-op",         msl_vis_set(dir, true, reason, sizeof(reason)) == 0);
+	    fhs_vis_status(dir, &st) == 0 && st.hidden);
+	check("hiding again is a no-op",         fhs_vis_set(dir, true, reason, sizeof(reason)) == 0);
 
-	check("showing succeeds",                msl_vis_set(dir, false, reason, sizeof(reason)) == 0);
+	check("showing succeeds",                fhs_vis_set(dir, false, reason, sizeof(reason)) == 0);
 	check("it now reads as shown",
-	    msl_vis_status(dir, &st) == 0 && !st.hidden);
-	check("showing again is a no-op",        msl_vis_set(dir, false, reason, sizeof(reason)) == 0);
+	    fhs_vis_status(dir, &st) == 0 && !st.hidden);
+	check("showing again is a no-op",        fhs_vis_set(dir, false, reason, sizeof(reason)) == 0);
 
 	/* Other flags must survive a visibility change. */
 	check("set an unrelated flag",           lchflags(dir, UF_NODUMP) == 0);
 	check("hiding preserves it",
-	    msl_vis_set(dir, true, reason, sizeof(reason)) == 0);
+	    fhs_vis_set(dir, true, reason, sizeof(reason)) == 0);
 	{
 		struct stat sb;
 		check("UF_NODUMP still set",
@@ -140,23 +140,23 @@ main(void)
 
 	check("symlink created",                 symlink(target, link) == 0);
 	check("symlink is seen as a symlink",
-	    msl_vis_status(link, &st) == 0 && st.symlink);
+	    fhs_vis_status(link, &st) == 0 && st.symlink);
 
-	check("hiding the symlink succeeds",     msl_vis_set(link, true, reason, sizeof(reason)) == 0);
+	check("hiding the symlink succeeds",     fhs_vis_set(link, true, reason, sizeof(reason)) == 0);
 	check("the symlink is hidden",
-	    msl_vis_status(link, &st) == 0 && st.hidden);
+	    fhs_vis_status(link, &st) == 0 && st.hidden);
 	check("the target is untouched",
-	    msl_vis_status(target, &st) == 0 && !st.hidden);
+	    fhs_vis_status(target, &st) == 0 && !st.hidden);
 
 	/* --- absent paths --------------------------------------------------- */
 	check("an absent path reports ABSENT",
-	    msl_vis_status(TEST_SCRATCH "/nothing", &st) == 0 &&
-	    !st.exists && st.lock == MSL_VIS_ABSENT);
+	    fhs_vis_status(TEST_SCRATCH "/nothing", &st) == 0 &&
+	    !st.exists && st.lock == FHS_VIS_ABSENT);
 	check("setting an absent path fails",
-	    msl_vis_set(TEST_SCRATCH "/nothing", true, reason, sizeof(reason)) == -1);
+	    fhs_vis_set(TEST_SCRATCH "/nothing", true, reason, sizeof(reason)) == -1);
 	check("and says so",                     strstr(reason, "does not exist") != NULL);
 
-	check("NULL path is rejected",           msl_vis_status(NULL, &st) == -1);
+	check("NULL path is rejected",           fhs_vis_status(NULL, &st) == -1);
 
 	unlink(link);
 	unlink(target);
@@ -166,9 +166,9 @@ main(void)
 	/* --- classification of the real root, read-only --------------------- */
 	printf("\n  (the following read real system paths; none are modified)\n");
 
-	check_lock("/bin",     MSL_VIS_SIP,         "SIP");
-	check_lock("/usr",     MSL_VIS_SIP,         "SIP");
-	check_lock("/var",     MSL_VIS_SIP,         "SIP");
+	check_lock("/bin",     FHS_VIS_SIP,         "SIP");
+	check_lock("/usr",     FHS_VIS_SIP,         "SIP");
+	check_lock("/var",     FHS_VIS_SIP,         "SIP");
 	/*
 	 * /home is conditional. It exists only while something has created the
 	 * root-level entry - autofs, or our own synthetic.conf declaration after a
@@ -176,23 +176,23 @@ main(void)
 	 * a symlink at / lives on the sealed root. Asserting a single one of those
 	 * pins a state the system is entitled to change.
 	 */
-	if (msl_vis_status("/home", &st) == 0 && st.exists)
-		check_lock("/home", MSL_VIS_READONLY, "read-only");
+	if (fhs_vis_status("/home", &st) == 0 && st.exists)
+		check_lock("/home", FHS_VIS_READONLY, "read-only");
 	else
-		check_lock("/home", MSL_VIS_ABSENT, "absent");
-	check_lock("/private", MSL_VIS_PROTECTED,   "protected");
-	check_lock("/dev",     MSL_VIS_UNSUPPORTED, "unsupported");
-	check_lock("/opt",     MSL_VIS_CHANGEABLE,  "changeable");
-	check_lock("/cores",   MSL_VIS_CHANGEABLE,  "changeable");
-	check_lock("/Volumes", MSL_VIS_CHANGEABLE,  "changeable");
+		check_lock("/home", FHS_VIS_ABSENT, "absent");
+	check_lock("/private", FHS_VIS_PROTECTED,   "protected");
+	check_lock("/dev",     FHS_VIS_UNSUPPORTED, "unsupported");
+	check_lock("/opt",     FHS_VIS_CHANGEABLE,  "changeable");
+	check_lock("/cores",   FHS_VIS_CHANGEABLE,  "changeable");
+	check_lock("/Volumes", FHS_VIS_CHANGEABLE,  "changeable");
 
 	/* /dev is the case the verification logic exists for. */
 	check("/dev is a mount point",
-	    msl_vis_status("/dev", &st) == 0 && st.is_mount);
+	    fhs_vis_status("/dev", &st) == 0 && st.is_mount);
 	check("/dev is mounted nobrowse",        !st.browsable);
 	check("/dev is hidden",                  st.hidden);
 	check("changing /dev is refused up front",
-	    msl_vis_set("/dev", false, reason, sizeof(reason)) == -1);
+	    fhs_vis_set("/dev", false, reason, sizeof(reason)) == -1);
 	check("and names the filesystem as the cause",
 	    strstr(reason, "ignores visibility flags") != NULL);
 
@@ -206,9 +206,9 @@ main(void)
 	 * node was legitimately shown, which is the test being wrong and not the
 	 * system.
 	 */
-	if (geteuid() != 0 && msl_vis_status("/opt", &st) == 0 && st.exists) {
+	if (geteuid() != 0 && fhs_vis_status("/opt", &st) == 0 && st.exists) {
 		check("an unowned node reports the ownership requirement",
-		    msl_vis_set("/opt", !st.hidden, reason, sizeof(reason)) == -1 &&
+		    fhs_vis_set("/opt", !st.hidden, reason, sizeof(reason)) == -1 &&
 		    strstr(reason, "requires root") != NULL);
 	}
 

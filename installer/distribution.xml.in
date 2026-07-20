@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>mSL/XNU __MSLVERSION__</title>
-    <organization>com.beako.msl</organization>
+    <title>mSL/FHS __FHSVERSION__</title>
+    <organization>com.beako.fhs</organization>
     <options customize="never" require-scripts="true"
              hostArchitectures="arm64,x86_64" rootVolumeOnly="true"/>
 
@@ -11,14 +11,14 @@
 
     <choices-outline>
         <line choice="default">
-            <line choice="msl"/>
+            <line choice="fhs"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="msl" title="mSL/XNU" visible="false">
-        <pkg-ref id="com.beako.msl.pkg"/>
+    <choice id="fhs" title="mSL/FHS" visible="false">
+        <pkg-ref id="com.beako.fhs.pkg"/>
     </choice>
 
-    <pkg-ref id="com.beako.msl.pkg" version="__MSLVERSION__"
-             onConclusion="none">msl-component.pkg</pkg-ref>
+    <pkg-ref id="com.beako.fhs.pkg" version="__FHSVERSION__"
+             onConclusion="none">fhs-component.pkg</pkg-ref>
 </installer-gui-script>

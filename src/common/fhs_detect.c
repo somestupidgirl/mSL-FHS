@@ -1,13 +1,13 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_detect.c
+ * fhs_detect.c
  *
  * Read-only detection of the pseudo-filesystems and of our own daemon. Nothing
- * here mounts, unmounts, loads or configures anything - see msl_detect.h.
+ * here mounts, unmounts, loads or configures anything - see fhs_detect.h.
  */
-#include "msl.h"
-#include "msl_detect.h"
+#include "fhs.h"
+#include "fhs_detect.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +56,7 @@ mounted_at(const char *fsname, const char *mountpoint)
 }
 
 static void
-detect(struct msl_pseudofs *fs, const char *name, const char *mountpoint)
+detect(struct fhs_pseudofs *fs, const char *name, const char *mountpoint)
 {
 	fs->name = name;
 	fs->mountpoint = mountpoint;
@@ -72,19 +72,19 @@ detect(struct msl_pseudofs *fs, const char *name, const char *mountpoint)
 }
 
 void
-msl_detect_procfs(struct msl_pseudofs *fs)
+fhs_detect_procfs(struct fhs_pseudofs *fs)
 {
 	detect(fs, "procfs", "/proc");
 }
 
 void
-msl_detect_sysfs(struct msl_pseudofs *fs)
+fhs_detect_sysfs(struct fhs_pseudofs *fs)
 {
 	detect(fs, "sysfs", "/sys");
 }
 
 void
-msl_detect_devfs(struct msl_pseudofs *fs)
+fhs_detect_devfs(struct fhs_pseudofs *fs)
 {
 	fs->name = "devfs";
 	fs->mountpoint = "/dev";
@@ -99,7 +99,7 @@ msl_detect_devfs(struct msl_pseudofs *fs)
 }
 
 bool
-msl_daemon_running(void)
+fhs_daemon_running(void)
 {
 	/*
 	 * Ask the kernel for the process list rather than shelling out to pgrep:
@@ -124,7 +124,7 @@ msl_daemon_running(void)
 	}
 
 	for (size_t i = 0; i < len / sizeof(struct kinfo_proc); i++) {
-		if (strcmp(procs[i].kp_proc.p_comm, "mslxd") == 0) {
+		if (strcmp(procs[i].kp_proc.p_comm, "fhsxd") == 0) {
 			found = true;
 			break;
 		}

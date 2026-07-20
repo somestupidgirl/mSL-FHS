@@ -12,13 +12,13 @@
  *
  * The implementation is #included to reach its statics.
  */
-#include "msl_boot.c"
+#include "fhs_boot.c"
 
 #include <fcntl.h>
 #include <stdlib.h>
 
 #ifndef TEST_SCRATCH
-#define TEST_SCRATCH "/tmp/msl-boot-test"
+#define TEST_SCRATCH "/tmp/fhs-boot-test"
 #endif
 
 static int failures;
@@ -38,11 +38,11 @@ main(void)
 	char link[MAXPATHLEN], file[MAXPATHLEN];
 	int fd;
 
-	msl_set_quiet(true);
+	fhs_set_quiet(true);
 
 	/* --- kernel selection ---------------------------------------------- */
 	check("the running kernel is found",
-	    msl_boot_running_kernel(path, sizeof(path), name, sizeof(name)));
+	    fhs_boot_running_kernel(path, sizeof(path), name, sizeof(name)));
 	check("it is under /System/Library/Kernels",
 	    strncmp(path, KERNELS_DIR "/", strlen(KERNELS_DIR) + 1) == 0);
 	check("it exists on disk",           access(path, F_OK) == 0);

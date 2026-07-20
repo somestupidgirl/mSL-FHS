@@ -1,7 +1,7 @@
 //
 // Copyright (c) 2026 Sunneva N. Mariu
 //
-// MSLMenu.swift
+// FHSMenu.swift
 //
 // The menu-bar app. It lists every root-level directory with a status dot, and
 // hovering one opens a dropdown for that node: an On/Off toggle for the mSL
@@ -10,7 +10,7 @@
 // which it only observes.
 //
 // The whole menu is rebuilt every time it opens rather than cached: the layer
-// is changed by mslctl, by mslxd as volumes come and go, and by the Finder
+// is changed by fhsctl, by fhsxd as volumes come and go, and by the Finder
 // itself, so a cached view would drift with no notification to invalidate it.
 //
 import Cocoa
@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let image = Bundle.main.url(forResource: "icon_menu", withExtension: "png")
             .flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "folder.badge.gearshape",
-                       accessibilityDescription: "mSL/XNU")
+                       accessibilityDescription: "mSL/FHS")
 
         if let image {
             image.isTemplate = true
@@ -60,17 +60,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let state = MSLState()
+        let state = FHSState()
 
         guard state.available else {
-            addDisabled(menu, "mslctl not found")
+            addDisabled(menu, "fhsctl not found")
             addDisabled(menu, "Install with: sudo make install")
             menu.addItem(.separator())
             addAction(menu, "Quit", #selector(NSApplication.terminate(_:)), target: NSApp)
             return
         }
 
-        addDisabled(menu, "mSL/XNU \(state.version)")
+        addDisabled(menu, "mSL/FHS \(state.version)")
         menu.addItem(.separator())
 
         // A quick health line, matching the mockup's System / Daemon rows.
@@ -103,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the automatic one would leave its size and position outside our
         // control, and the two rows have to match.
         menu.addItem(.separator())
-        let aboutItem = addAction(menu, "About mSL/XNU", #selector(showAbout),
+        let aboutItem = addAction(menu, "About mSL/FHS", #selector(showAbout),
                                   key: "?")
         // "?" is typed with shift, and AppKit would otherwise render the
         // equivalent as the shifted key it is reached by. Naming the modifier
@@ -116,14 +116,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// One directory row: a coloured dot, the path, and a dropdown.
-    private func addNode(_ menu: NSMenu, _ node: NodeInfo, _ state: MSLState) {
+    private func addNode(_ menu: NSMenu, _ node: NodeInfo, _ state: FHSState) {
         let item = NSMenuItem(title: "\(dot(state.nodeOn(node)))  \(node.path)",
                               action: nil, keyEquivalent: "")
         item.submenu = nodeSubmenu(node, state)
         menu.addItem(item)
     }
 
-    private func nodeSubmenu(_ node: NodeInfo, _ state: MSLState) -> NSMenu {
+    private func nodeSubmenu(_ node: NodeInfo, _ state: FHSState) -> NSMenu {
         let sub = NSMenu()
 
         // On/Off, only for the mSL-managed components.
@@ -179,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// is what the porcelain uses, so the dot and the text come from the same
     /// state rather than one being inferred from the other's wording.
     private func addPseudoFS(_ menu: NSMenu, _ name: String, _ path: String,
-                             _ state: MSLState) {
+                             _ state: FHSState) {
         let key = String(path.dropFirst())
         let mounted = state.pseudofsMounted(key)
         let item = NSMenuItem(
@@ -241,17 +241,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Actions
 
     @objc private func openPreferences() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: "/Library/PreferencePanes/mSL.prefPane"))
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/Library/PreferencePanes/FHS.prefPane"))
     }
 
     @objc private func toggleComponent(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String,
               let component = Component(rawValue: name) else { return }
 
-        let want = !MSLState().enabled(component)
-        guard MSLState.apply([component: want]) else { return }
+        let want = !FHSState().enabled(component)
+        guard FHSState.apply([component: want]) else { return }
 
-        if component.needsReboot, MSLState().rebootPending(component) {
+        if component.needsReboot, FHSState().rebootPending(component) {
             notifyRestart(component, enabling: want)
         }
     }
@@ -260,9 +260,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let name = sender.representedObject as? String else { return }
 
         // The porcelain flag is the source of truth for the current state.
-        let node = MSLState().nodes.first { $0.name == name }
+        let node = FHSState().nodes.first { $0.name == name }
         let makeVisible = node?.hidden ?? true
-        MSLState.setVisible(name, makeVisible)
+        FHSState.setVisible(name, makeVisible)
     }
 
     @objc private func openInFinder(_ sender: NSMenuItem) {
@@ -282,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "mSL/XNU \(MSLState().version)"
+        alert.messageText = "mSL/FHS \(FHSState().version)"
         alert.informativeText =
             "macOS Subsystem for Linux / X is Now UNIX\n\n"
             + "A filesystem-layout compatibility layer that presents macOS "
@@ -303,7 +303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func registerLoginItemOnFirstLaunch() {
         guard #available(macOS 13.0, *) else { return }
-        let key = "MSLDidAutoRegisterLoginItem"
+        let key = "FHSDidAutoRegisterLoginItem"
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: key) else { return }
         defaults.set(true, forKey: key)

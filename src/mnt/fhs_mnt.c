@@ -1,18 +1,18 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_mnt.c
+ * fhs_mnt.c
  *
- * The /mnt component. See msl_mnt.h for why enabling it is only a skeleton
+ * The /mnt component. See fhs_mnt.h for why enabling it is only a skeleton
  * entry: on Linux nothing populates /mnt, so the component creates the
  * directory and then leaves it to the administrator.
  *
  * Beyond enable/disable, the component reports what is mounted there, so the
  * GUI can show the actual mounts instead of a bare "empty". That read is the
- * only part that is not a thin pass-through to msl_skeleton.
+ * only part that is not a thin pass-through to fhs_skeleton.
  */
-#include "msl.h"
-#include "msl_mnt.h"
+#include "fhs.h"
+#include "fhs_mnt.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -21,7 +21,7 @@
 
 /* /mnt, and the Data-volume path it is a symlink to. */
 #define MNT_ROOT        "/mnt"
-#define MNT_DATA_ROOT   MSL_DATA_ROOT "/mnt"
+#define MNT_DATA_ROOT   FHS_DATA_ROOT "/mnt"
 
 /*
  * If `mp` names a filesystem mounted directly under /mnt, return the mount
@@ -49,7 +49,7 @@ mnt_child(const char *mp)
 }
 
 int
-msl_mnt_scan(struct msl_mnt_mount *out, int max)
+fhs_mnt_scan(struct fhs_mnt_mount *out, int max)
 {
 	struct statfs *mounts;
 	int n, count = 0;
@@ -76,70 +76,70 @@ msl_mnt_scan(struct msl_mnt_mount *out, int max)
 }
 
 int
-msl_mnt_status(struct msl_mnt_status *st)
+fhs_mnt_status(struct fhs_mnt_status *st)
 {
-	struct msl_mnt_mount mounts[64];
+	struct fhs_mnt_mount mounts[64];
 	int n;
 
 	memset(st, 0, sizeof(*st));
 
-	st->enabled = msl_state_get(MSL_MNT_STATE, 0) != 0;
+	st->enabled = fhs_state_get(FHS_MNT_STATE, 0) != 0;
 
-	if (msl_skeleton_status(MSL_MNT_NAME, &st->skel) != 0)
+	if (fhs_skeleton_status(FHS_MNT_NAME, &st->skel) != 0)
 		return -1;
 
-	st->reboot_pending = msl_skeleton_reboot_pending(MSL_MNT_NAME);
+	st->reboot_pending = fhs_skeleton_reboot_pending(FHS_MNT_NAME);
 
-	n = msl_mnt_scan(mounts, (int)(sizeof(mounts) / sizeof(mounts[0])));
+	n = fhs_mnt_scan(mounts, (int)(sizeof(mounts) / sizeof(mounts[0])));
 	st->mounts = (n < 0) ? 0 : n;
 
 	return 0;
 }
 
 int
-msl_mnt_enable(void)
+fhs_mnt_enable(void)
 {
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("enabling /mnt requires root");
+	if (!fhs_is_root()) {
+		fhs_err("enabling /mnt requires root");
 		return -1;
 	}
 
-	rc = msl_skeleton_add(MSL_MNT_NAME);
+	rc = fhs_skeleton_add(FHS_MNT_NAME);
 	if (rc < 0)
 		return -1;
 
-	if (msl_state_set(MSL_MNT_STATE, 1) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_MNT_STATE, 1) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	if (rc == 1)
-		msl_log("/mnt will appear after the next reboot.");
-	else if (!msl_skeleton_reboot_pending(MSL_MNT_NAME))
-		msl_log("/mnt is already present.");
+		fhs_log("/mnt will appear after the next reboot.");
+	else if (!fhs_skeleton_reboot_pending(FHS_MNT_NAME))
+		fhs_log("/mnt is already present.");
 
 	return 0;
 }
 
 int
-msl_mnt_disable(void)
+fhs_mnt_disable(void)
 {
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("disabling /mnt requires root");
+	if (!fhs_is_root()) {
+		fhs_err("disabling /mnt requires root");
 		return -1;
 	}
 
-	rc = msl_skeleton_remove(MSL_MNT_NAME);
+	rc = fhs_skeleton_remove(FHS_MNT_NAME);
 	if (rc < 0)
 		return -1;
 
-	if (msl_state_set(MSL_MNT_STATE, 0) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_MNT_STATE, 0) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	if (rc == 1)
-		msl_log("/mnt will disappear after the next reboot.");
+		fhs_log("/mnt will disappear after the next reboot.");
 
 	return 0;
 }

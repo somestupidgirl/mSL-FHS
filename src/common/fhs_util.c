@@ -1,12 +1,12 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_util.c
+ * fhs_util.c
  *
  * Shared helpers: logging, persisted component state, atomic file replacement
  * and subprocess execution.
  */
-#include "msl.h"
+#include "fhs.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -23,13 +23,13 @@
 static bool s_quiet = false;
 
 void
-msl_set_quiet(bool quiet)
+fhs_set_quiet(bool quiet)
 {
 	s_quiet = quiet;
 }
 
 void
-msl_log(const char *fmt, ...)
+fhs_log(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -43,7 +43,7 @@ msl_log(const char *fmt, ...)
 }
 
 void
-msl_err(const char *fmt, ...)
+fhs_err(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -55,7 +55,7 @@ msl_err(const char *fmt, ...)
 }
 
 bool
-msl_is_root(void)
+fhs_is_root(void)
 {
 	return geteuid() == 0;
 }
@@ -65,11 +65,11 @@ msl_is_root(void)
 static void
 state_path(char *buf, size_t bufsz, const char *name)
 {
-	snprintf(buf, bufsz, "%s/%s", MSL_STATE_DIR, name);
+	snprintf(buf, bufsz, "%s/%s", FHS_STATE_DIR, name);
 }
 
 int
-msl_state_get(const char *name, int dflt)
+fhs_state_get(const char *name, int dflt)
 {
 	char path[PATH_MAX];
 	char *text;
@@ -77,7 +77,7 @@ msl_state_get(const char *name, int dflt)
 
 	state_path(path, sizeof(path), name);
 
-	text = msl_slurp(path, NULL);
+	text = fhs_slurp(path, NULL);
 	if (text == NULL)
 		return dflt;
 
@@ -97,7 +97,7 @@ msl_state_get(const char *name, int dflt)
 }
 
 int
-msl_state_set(const char *name, int value)
+fhs_state_set(const char *name, int value)
 {
 	char path[PATH_MAX];
 	char text[32];
@@ -106,13 +106,13 @@ msl_state_set(const char *name, int value)
 	state_path(path, sizeof(path), name);
 	len = snprintf(text, sizeof(text), "%d\n", value);
 
-	return msl_write_atomic(path, text, (size_t)len, 0644);
+	return fhs_write_atomic(path, text, (size_t)len, 0644);
 }
 
 /* ------------------------------------------------------------------------- */
 
 char *
-msl_slurp(const char *path, size_t *len_out)
+fhs_slurp(const char *path, size_t *len_out)
 {
 	int fd;
 	struct stat sb;
@@ -164,7 +164,7 @@ msl_slurp(const char *path, size_t *len_out)
 }
 
 int
-msl_write_atomic(const char *path, const char *data, size_t len, mode_t mode)
+fhs_write_atomic(const char *path, const char *data, size_t len, mode_t mode)
 {
 	char tmp[PATH_MAX];
 	int fd;
@@ -172,7 +172,7 @@ msl_write_atomic(const char *path, const char *data, size_t len, mode_t mode)
 	size_t off = 0;
 	int saved;
 
-	snprintf(tmp, sizeof(tmp), "%s.msl.tmp", path);
+	snprintf(tmp, sizeof(tmp), "%s.fhs.tmp", path);
 
 	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
 	if (fd < 0)
@@ -193,7 +193,7 @@ msl_write_atomic(const char *path, const char *data, size_t len, mode_t mode)
 		goto fail;
 	if (fchmod(fd, mode) != 0)
 		goto fail;
-	if (msl_is_root() && fchown(fd, 0, 0) != 0)
+	if (fhs_is_root() && fchown(fd, 0, 0) != 0)
 		goto fail;
 	if (close(fd) != 0) {
 		fd = -1;
@@ -219,7 +219,7 @@ fail:
 }
 
 int
-msl_backup_once(const char *src, const char *dst)
+fhs_backup_once(const char *src, const char *dst)
 {
 	char *data;
 	size_t len;
@@ -228,11 +228,11 @@ msl_backup_once(const char *src, const char *dst)
 	if (access(dst, F_OK) == 0)
 		return 0;	/* pristine original already saved */
 
-	data = msl_slurp(src, &len);
+	data = fhs_slurp(src, &len);
 	if (data == NULL)
 		return -1;
 
-	rc = msl_write_atomic(dst, data, len, 0644);
+	rc = fhs_write_atomic(dst, data, len, 0644);
 	free(data);
 	return rc;
 }
@@ -240,7 +240,7 @@ msl_backup_once(const char *src, const char *dst)
 /* ------------------------------------------------------------------------- */
 
 int
-msl_run(const char *const argv[])
+fhs_run(const char *const argv[])
 {
 	pid_t pid;
 	int status;

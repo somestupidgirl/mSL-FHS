@@ -5,12 +5,12 @@
  *
  * Label sanitisation and collision handling for /media. These are pure string
  * transformations, so they are tested directly; the DiskArbitration filter and
- * the symlink farm need real devices and are exercised with `mslctl media list`
- * and `mslctl media sync`.
+ * the symlink farm need real devices and are exercised with `fhsctl media list`
+ * and `fhsctl media sync`.
  *
  * The implementation is #included to reach its static helpers.
  */
-#include "msl_media.c"
+#include "fhs_media.c"
 
 static int failures;
 
@@ -28,7 +28,7 @@ expect(const char *in, const char *want)
 	char got[MAXPATHLEN];
 	char label[128];
 
-	msl_media_sanitise(in, got, sizeof(got));
+	fhs_media_sanitise(in, got, sizeof(got));
 	snprintf(label, sizeof(label), "\"%s\" -> \"%s\"", in ? in : "(null)", want);
 	check(label, strcmp(got, want) == 0);
 }
@@ -36,10 +36,10 @@ expect(const char *in, const char *want)
 int
 main(void)
 {
-	struct msl_volume vols[4];
+	struct fhs_volume vols[4];
 	char label[MAXPATHLEN];
 
-	msl_set_quiet(true);
+	fhs_set_quiet(true);
 
 	/* --- names that pass through unchanged ---------------------------- */
 	expect("USBSTICK", "USBSTICK");

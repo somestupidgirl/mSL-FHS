@@ -3,21 +3,21 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>mSL</string>
+	<string>FHS</string>
 	<key>CFBundleDisplayName</key>
-	<string>mSL/XNU</string>
+	<string>mSL/FHS</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.beako.msl.gui</string>
+	<string>com.beako.fhs.gui</string>
 	<key>CFBundleExecutable</key>
-	<string>mSL</string>
+	<string>FHS</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
-	<string>__MSLVERSION__</string>
+	<string>__FHSVERSION__</string>
 	<key>CFBundleShortVersionString</key>
-	<string>__MSLVERSION__</string>
+	<string>__FHSVERSION__</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>LSUIElement</key>

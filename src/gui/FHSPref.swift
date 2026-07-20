@@ -1,7 +1,7 @@
 //
 // Copyright (c) 2026 Sunneva N. Mariu
 //
-// MSLPref.swift
+// FHSPref.swift
 //
 // The System Settings preference pane, laid out after Apple's stock panes: a
 // description card at the top, grouped setting cards below, and a version and
@@ -32,9 +32,9 @@ manage them.
 
 // The Info.plist names this class in NSPrincipalClass, so it needs a stable
 // Objective-C name rather than Swift's mangled one.
-@objc(MSLPref)
-final class MSLPref: NSPreferencePane {
-    private var state = MSLState()
+@objc(FHSPref)
+final class FHSPref: NSPreferencePane {
+    private var state = FHSState()
 
     // Pending, unapplied intent. Both are empty between Apply presses.
     private var pendingComponents: [Component: Bool] = [:]
@@ -77,7 +77,7 @@ final class MSLPref: NSPreferencePane {
                    + "the reason."),
             sectionLabel("Pseudo-filesystems"),
             card(makePseudoFS()),
-            makeNote("Managed by their own installers. mSL/XNU reports their "
+            makeNote("Managed by their own installers. mSL/FHS reports their "
                    + "state and never mounts or unmounts them."),
             makeButtons(),
             makeFooter(),
@@ -116,7 +116,7 @@ final class MSLPref: NSPreferencePane {
             icon.image = NSImage(contentsOf: url)
         } else {
             icon.image = NSImage(systemSymbolName: "folder.badge.gearshape",
-                                 accessibilityDescription: "mSL/XNU")
+                                 accessibilityDescription: "mSL/FHS")
         }
         icon.wantsLayer = true
         icon.layer?.cornerRadius = 10
@@ -127,7 +127,7 @@ final class MSLPref: NSPreferencePane {
             icon.heightAnchor.constraint(equalToConstant: 56),
         ])
 
-        let title = NSTextField(labelWithString: "mSL/XNU")
+        let title = NSTextField(labelWithString: "mSL/FHS")
         title.font = .systemFont(ofSize: 22, weight: .semibold)
 
         let blurb = NSTextField(wrappingLabelWithString: kDescription)
@@ -294,7 +294,7 @@ final class MSLPref: NSPreferencePane {
 
     /// The version-and-repository line and copyright, as on the procfs pane.
     private func makeFooter() -> NSView {
-        let version = NSTextField(labelWithString: "mSL/XNU v\(state.version): ")
+        let version = NSTextField(labelWithString: "mSL/FHS v\(state.version): ")
         version.font = .systemFont(ofSize: 11)
         version.textColor = .secondaryLabelColor
 
@@ -350,7 +350,7 @@ final class MSLPref: NSPreferencePane {
     // MARK: - State
 
     private func refresh() {
-        state = MSLState()
+        state = FHSState()
 
         for component in Component.allCases {
             let want = pendingComponents[component] ?? state.enabled(component)
@@ -371,7 +371,7 @@ final class MSLPref: NSPreferencePane {
 
         procLabel.stringValue = state.pseudofs("proc")
         sysLabel.stringValue = state.pseudofs("sys")
-        daemonLabel.stringValue = "mslxd — "
+        daemonLabel.stringValue = "fhsxd — "
             + (state.daemonRunning ? "running" : "not running")
 
         updateButtons()
@@ -424,7 +424,7 @@ final class MSLPref: NSPreferencePane {
         let visibility = pendingVisibility
         guard !components.isEmpty || !visibility.isEmpty else { return }
 
-        guard MSLState.applyAll(components: components, visibility: visibility) else {
+        guard FHSState.applyAll(components: components, visibility: visibility) else {
             // Cancelling the authorization prompt lands here too - an ordinary
             // thing to do - so the pending changes are kept and the user can
             // simply press Apply again.

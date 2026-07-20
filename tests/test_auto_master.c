@@ -16,7 +16,7 @@
  *   - unmask restores the file byte-for-byte
  *   - a file with no /home line is left completely alone
  */
-#include "msl_home.c"
+#include "fhs_home.c"
 
 static int failures;
 
@@ -32,7 +32,7 @@ check(const char *what, bool ok)
 static void
 put(const char *content)
 {
-	if (msl_write_atomic(AUTO_MASTER, content, strlen(content), 0644) != 0) {
+	if (fhs_write_atomic(AUTO_MASTER, content, strlen(content), 0644) != 0) {
 		fprintf(stderr, "cannot write %s: %s\n", AUTO_MASTER, strerror(errno));
 		exit(2);
 	}
@@ -41,7 +41,7 @@ put(const char *content)
 static char *
 get(void)
 {
-	char *s = msl_slurp(AUTO_MASTER, NULL);
+	char *s = fhs_slurp(AUTO_MASTER, NULL);
 	if (s == NULL) {
 		fprintf(stderr, "cannot read %s\n", AUTO_MASTER);
 		exit(2);
@@ -65,7 +65,7 @@ main(void)
 {
 	char *original, *masked, *restored;
 
-	msl_set_quiet(true);
+	fhs_set_quiet(true);
 
 	/* --- stock file: mask, unmask, round-trip ------------------------- */
 	put(STOCK);
@@ -100,6 +100,32 @@ main(void)
 	restored = get();
 	check("no /home line: file unchanged",    strcmp(original, restored) == 0);
 	free(original);
+	free(restored);
+
+	/*
+	 * --- a file masked before the mSL/XNU -> mSL/FHS rename ---------------
+	 *
+	 * The old marker is live in /etc/auto_master on any machine where /home
+	 * was enabled before the rename. Failing to recognise it would leave
+	 * /home commented out permanently, with `home disable` reporting success
+	 * while restoring nothing.
+	 */
+	put("+auto_master\n"
+	    "#msl:disabled# /home\tauto_home\t-nobrowse,hidefromfinder\n"
+	    "/-\t\t\t-static\n");
+	check("the pre-rename marker reads as masked", is_masked());
+	check("unmasking it reports a change",    set_masked(false) == 1);
+	restored = get();
+	check("the old marker is stripped",       strstr(restored, "#msl:") == NULL);
+	check("the /home line is restored",       strstr(restored, "\n/home\t") != NULL);
+	check("other lines survive",              strstr(restored, "/-\t\t\t-static") != NULL);
+	free(restored);
+
+	/* Re-masking such a file writes the current marker, not the old one. */
+	check("re-masking reports a change",      set_masked(true) == 1);
+	restored = get();
+	check("the current marker is written",    strstr(restored, "#fhs:disabled#") != NULL);
+	check("the old marker is not reintroduced", strstr(restored, "#msl:") == NULL);
 	free(restored);
 
 	/* --- a file missing its trailing newline must not gain or lose one -- */

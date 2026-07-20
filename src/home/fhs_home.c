@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_home.c
+ * fhs_home.c
  *
  * The /home component.
  *
@@ -31,14 +31,14 @@
  *   1. The auto_master line is *masked*, not deleted, and marked with a
  *      distinctive prefix, so unmasking restores it exactly and unrelated edits
  *      to the file survive a disable/enable cycle. A pristine copy is kept at
- *      /var/db/msl.auto_master.orig regardless.
+ *      /var/db/fhs.auto_master.orig regardless.
  *
  *   2. Nothing is ever removed from /home unless it is a symlink pointing into
  *      /Users. A real directory found there is left untouched and reported, on
  *      the assumption that it is someone's data and not ours to delete.
  */
-#include "msl.h"
-#include "msl_home.h"
+#include "fhs.h"
+#include "fhs_home.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -62,15 +62,36 @@
 #define AUTO_HOME       "/etc/auto_home"
 #endif
 #ifndef AUTO_BACKUP
-#define AUTO_BACKUP     MSL_STATE_DIR "/msl.auto_master.orig"
+#define AUTO_BACKUP     FHS_STATE_DIR "/fhs.auto_master.orig"
 #endif
 #define AUTOMOUNT       "/usr/sbin/automount"
 
 /*
  * Prefix stamped onto the auto_master line we mask. Distinctive enough that we
  * never mistake a user's own commented-out line for ours, and vice versa.
+ *
+ * LEGACY_MASK_MARK is the prefix this project wrote before it was renamed from
+ * mSL/XNU to mSL/FHS. It is still recognised, and must stay recognised: the
+ * marker lives in /etc/auto_master on any machine where /home was enabled
+ * before the rename. Recognising only the new one would leave those systems
+ * with /home permanently commented out - unmasking would not match the line,
+ * so `fhsctl home disable` would report success while restoring nothing.
  */
-#define MASK_MARK       "#msl:disabled# "
+#define MASK_MARK           "#fhs:disabled# "
+#define LEGACY_MASK_MARK    "#msl:disabled# "
+
+/*
+ * Length of whichever mask prefix `line` begins with, or 0 if it has none.
+ */
+static size_t
+mask_prefix_len(const char *line)
+{
+	if (strncmp(line, MASK_MARK, sizeof(MASK_MARK) - 1) == 0)
+		return sizeof(MASK_MARK) - 1;
+	if (strncmp(line, LEGACY_MASK_MARK, sizeof(LEGACY_MASK_MARK) - 1) == 0)
+		return sizeof(LEGACY_MASK_MARK) - 1;
+	return 0;
+}
 
 /* Where real home directories live on macOS. */
 #define USERS_ROOT      "/Users/"
@@ -88,7 +109,7 @@
  * Three kinds of account have to be excluded, and each needs its own test:
  *
  *   - macOS service accounts (_locationd, _spotlight, ...): uid below
- *     MSL_MIN_UID, and by convention an underscore-prefixed name.
+ *     FHS_MIN_UID, and by convention an underscore-prefixed name.
  *   - The `nobody` and `nogroup` sentinels: uid -2 and -1, which are *huge*
  *     when read as the unsigned uid_t they are stored in, so a lower bound
  *     alone lets them through. Hence the upper bound.
@@ -105,7 +126,7 @@ is_login_account(const struct passwd *pw)
 		"/usr/bin/false", "/sbin/nologin", "/usr/sbin/nologin", "/dev/null", NULL
 	};
 
-	if (pw->pw_uid < MSL_MIN_UID || pw->pw_uid >= 0x7FFFFFFF)
+	if (pw->pw_uid < FHS_MIN_UID || pw->pw_uid >= 0x7FFFFFFF)
 		return false;
 
 	if (pw->pw_name == NULL || pw->pw_name[0] == '_' || pw->pw_name[0] == '\0')
@@ -193,14 +214,14 @@ set_masked(bool mask)
 	bool changed = false;
 	int rc = -1;
 
-	text = msl_slurp(AUTO_MASTER, &len);
+	text = fhs_slurp(AUTO_MASTER, &len);
 	if (text == NULL) {
-		msl_err("cannot read %s: %s", AUTO_MASTER, strerror(errno));
+		fhs_err("cannot read %s: %s", AUTO_MASTER, strerror(errno));
 		return -1;
 	}
 
 	/* Worst case, every line gains the mask prefix. */
-	outsz = len + (len / 8 + 1) * sizeof(MASK_MARK) + 1;
+	outsz = len + (len / 8 + 1) * (sizeof(MASK_MARK) + 1) + 1;
 	out = malloc(outsz);
 	if (out == NULL) {
 		free(text);
@@ -224,9 +245,12 @@ set_masked(bool mask)
 			if (!append(out, outsz, &outlen, MASK_MARK, sizeof(MASK_MARK) - 1))
 				goto overflow;
 			changed = true;
-		} else if (!mask && strncmp(line, MASK_MARK, sizeof(MASK_MARK) - 1) == 0) {
-			emit = line + sizeof(MASK_MARK) - 1;
-			changed = true;
+		} else if (!mask) {
+			size_t prefix = mask_prefix_len(line);
+			if (prefix > 0) {
+				emit = line + prefix;
+				changed = true;
+			}
 		}
 
 		if (!append(out, outsz, &outlen, emit, strlen(emit)))
@@ -245,11 +269,11 @@ set_masked(bool mask)
 	}
 
 	/* Keep a pristine copy before the first modification, for recovery. */
-	if (mask && msl_backup_once(AUTO_MASTER, AUTO_BACKUP) != 0)
-		msl_err("warning: could not back up %s: %s", AUTO_MASTER, strerror(errno));
+	if (mask && fhs_backup_once(AUTO_MASTER, AUTO_BACKUP) != 0)
+		fhs_err("warning: could not back up %s: %s", AUTO_MASTER, strerror(errno));
 
-	if (msl_write_atomic(AUTO_MASTER, out, outlen, 0644) != 0) {
-		msl_err("cannot write %s: %s", AUTO_MASTER, strerror(errno));
+	if (fhs_write_atomic(AUTO_MASTER, out, outlen, 0644) != 0) {
+		fhs_err("cannot write %s: %s", AUTO_MASTER, strerror(errno));
 		goto done;
 	}
 
@@ -257,7 +281,7 @@ set_masked(bool mask)
 	goto done;
 
 overflow:
-	msl_err("refusing to rewrite %s: output would not fit", AUTO_MASTER);
+	fhs_err("refusing to rewrite %s: output would not fit", AUTO_MASTER);
 
 done:
 	free(out);
@@ -269,13 +293,14 @@ done:
 static bool
 is_masked(void)
 {
-	char *text = msl_slurp(AUTO_MASTER, NULL);
+	char *text = fhs_slurp(AUTO_MASTER, NULL);
 	bool found;
 
 	if (text == NULL)
 		return false;
 
-	found = strstr(text, MASK_MARK "/home") != NULL;
+	found = strstr(text, MASK_MARK "/home") != NULL ||
+	        strstr(text, LEGACY_MASK_MARK "/home") != NULL;
 	free(text);
 	return found;
 }
@@ -291,7 +316,7 @@ automounted(void)
 	 * it becomes an ordinary writable directory. Checking writability is more
 	 * reliable than parsing mount(8) output, since the mount is nobrowse.
 	 */
-	if (stat(MSL_HOME_ROOT, &sb) != 0)
+	if (stat(FHS_HOME_ROOT, &sb) != 0)
 		return false;
 
 	return (sb.st_mode & S_IWUSR) == 0;
@@ -302,10 +327,10 @@ static int
 automount_flush(void)
 {
 	const char *const argv[] = { AUTOMOUNT, "-vc", NULL };
-	int rc = msl_run(argv);
+	int rc = fhs_run(argv);
 
 	if (rc != 0)
-		msl_err("warning: %s -vc exited %d", AUTOMOUNT, rc);
+		fhs_err("warning: %s -vc exited %d", AUTOMOUNT, rc);
 
 	return rc;
 }
@@ -342,7 +367,7 @@ link_user(const struct passwd *pw)
 	char path[PATH_MAX], target[PATH_MAX];
 	struct stat sb;
 
-	snprintf(path, sizeof(path), "%s/%s", MSL_HOME_ROOT, pw->pw_name);
+	snprintf(path, sizeof(path), "%s/%s", FHS_HOME_ROOT, pw->pw_name);
 
 	if (lstat(path, &sb) == 0) {
 		if (S_ISLNK(sb.st_mode)) {
@@ -353,12 +378,12 @@ link_user(const struct passwd *pw)
 
 			/* A stale or foreign symlink: replace only if it is ours. */
 			if (!ours(path, target, sizeof(target))) {
-				msl_err("skipping %s: symlink to %s is not ours", path, target);
+				fhs_err("skipping %s: symlink to %s is not ours", path, target);
 				return -1;
 			}
 
 			if (unlink(path) != 0) {
-				msl_err("cannot replace %s: %s", path, strerror(errno));
+				fhs_err("cannot replace %s: %s", path, strerror(errno));
 				return -1;
 			}
 		} else {
@@ -366,17 +391,17 @@ link_user(const struct passwd *pw)
 			 * A real file or directory. Never delete it - it is far more
 			 * likely to be someone's data than a leftover of ours.
 			 */
-			msl_err("skipping %s: exists and is not a symlink", path);
+			fhs_err("skipping %s: exists and is not a symlink", path);
 			return -1;
 		}
 	}
 
 	if (symlink(pw->pw_dir, path) != 0) {
-		msl_err("cannot create %s -> %s: %s", path, pw->pw_dir, strerror(errno));
+		fhs_err("cannot create %s -> %s: %s", path, pw->pw_dir, strerror(errno));
 		return -1;
 	}
 
-	msl_log("  linked %s -> %s", path, pw->pw_dir);
+	fhs_log("  linked %s -> %s", path, pw->pw_dir);
 	return 0;
 }
 
@@ -393,7 +418,7 @@ prune(bool all)
 	char path[PATH_MAX], target[PATH_MAX];
 	int removed = 0;
 
-	dir = opendir(MSL_HOME_ROOT);
+	dir = opendir(FHS_HOME_ROOT);
 	if (dir == NULL)
 		return 0;	/* nothing to prune; not an error */
 
@@ -401,7 +426,7 @@ prune(bool all)
 		if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
 			continue;
 
-		snprintf(path, sizeof(path), "%s/%s", MSL_HOME_ROOT, ent->d_name);
+		snprintf(path, sizeof(path), "%s/%s", FHS_HOME_ROOT, ent->d_name);
 
 		if (!ours(path, target, sizeof(target)))
 			continue;
@@ -413,11 +438,11 @@ prune(bool all)
 		}
 
 		if (unlink(path) != 0) {
-			msl_err("cannot remove %s: %s", path, strerror(errno));
+			fhs_err("cannot remove %s: %s", path, strerror(errno));
 			continue;
 		}
 
-		msl_log("  removed %s", path);
+		fhs_log("  removed %s", path);
 		removed++;
 	}
 
@@ -449,7 +474,7 @@ populate(void)
  * ------------------------------------------------------------------------- */
 
 int
-msl_home_check_safe(char *reason, size_t reason_len)
+fhs_home_check_safe(char *reason, size_t reason_len)
 {
 	struct passwd *pw;
 	char *text, *line, *next;
@@ -488,7 +513,7 @@ msl_home_check_safe(char *reason, size_t reason_len)
 	 * Refuse if /etc/auto_home carries entries beyond the two macOS ships,
 	 * which would indicate a site-configured automounter we should not touch.
 	 */
-	text = msl_slurp(AUTO_HOME, NULL);
+	text = fhs_slurp(AUTO_HOME, NULL);
 	if (text != NULL) {
 		for (line = text; line != NULL && *line != '\0'; line = next) {
 			char *eol = strchr(line, '\n');
@@ -524,7 +549,7 @@ msl_home_check_safe(char *reason, size_t reason_len)
 }
 
 int
-msl_home_status(struct msl_home_status *st)
+fhs_home_status(struct fhs_home_status *st)
 {
 	struct passwd *pw;
 	DIR *dir;
@@ -533,12 +558,12 @@ msl_home_status(struct msl_home_status *st)
 
 	memset(st, 0, sizeof(*st));
 
-	st->enabled     = msl_state_get(MSL_HOME_STATE, 0) != 0;
+	st->enabled     = fhs_state_get(FHS_HOME_STATE, 0) != 0;
 	st->masked      = is_masked();
 	st->automounter = automounted();
 
-	msl_skeleton_status(MSL_HOME_NAME, &st->skel);
-	st->reboot_pending = msl_skeleton_reboot_pending(MSL_HOME_NAME);
+	fhs_skeleton_status(FHS_HOME_NAME, &st->skel);
+	st->reboot_pending = fhs_skeleton_reboot_pending(FHS_HOME_NAME);
 
 	setpwent();
 	while ((pw = getpwent()) != NULL) {
@@ -547,13 +572,13 @@ msl_home_status(struct msl_home_status *st)
 	}
 	endpwent();
 
-	dir = opendir(MSL_HOME_ROOT);
+	dir = opendir(FHS_HOME_ROOT);
 	if (dir != NULL) {
 		while ((ent = readdir(dir)) != NULL) {
 			if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
 				continue;
 
-			snprintf(path, sizeof(path), "%s/%s", MSL_HOME_ROOT, ent->d_name);
+			snprintf(path, sizeof(path), "%s/%s", FHS_HOME_ROOT, ent->d_name);
 
 			if (ours(path, target, sizeof(target)))
 				st->links++;
@@ -567,18 +592,18 @@ msl_home_status(struct msl_home_status *st)
 }
 
 int
-msl_home_enable(void)
+fhs_home_enable(void)
 {
 	char reason[512];
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("enabling /home requires root");
+	if (!fhs_is_root()) {
+		fhs_err("enabling /home requires root");
 		return -1;
 	}
 
-	if (msl_home_check_safe(reason, sizeof(reason)) != 0) {
-		msl_err("refusing to enable /home: %s", reason);
+	if (fhs_home_check_safe(reason, sizeof(reason)) != 0) {
+		fhs_err("refusing to enable /home: %s", reason);
 		return -1;
 	}
 
@@ -586,9 +611,9 @@ msl_home_enable(void)
 	 * Declare our own /home first. The root-level entry is created at boot by
 	 * autofs from the very auto_master line we are about to mask, so without a
 	 * synthetic.conf entry of our own /home would simply not exist at the next
-	 * boot - see msl_home.h.
+	 * boot - see fhs_home.h.
 	 */
-	if (msl_skeleton_add(MSL_HOME_NAME) < 0)
+	if (fhs_skeleton_add(FHS_HOME_NAME) < 0)
 		return -1;
 
 	rc = set_masked(true);
@@ -596,7 +621,7 @@ msl_home_enable(void)
 		return -1;
 
 	if (rc == 1) {
-		msl_log("masked the /home map in %s", AUTO_MASTER);
+		fhs_log("masked the /home map in %s", AUTO_MASTER);
 		automount_flush();
 	}
 
@@ -606,22 +631,22 @@ msl_home_enable(void)
 	 * useful than emitting a symlink error per account.
 	 */
 	if (automounted()) {
-		msl_err("%s is still held by the automounter; "
-		    "try again, or reboot if it persists", MSL_HOME_ROOT);
+		fhs_err("%s is still held by the automounter; "
+		    "try again, or reboot if it persists", FHS_HOME_ROOT);
 		return -1;
 	}
 
-	if (mkdir(MSL_HOME_ROOT, 0755) != 0 && errno != EEXIST) {
-		msl_err("cannot create %s: %s", MSL_HOME_ROOT, strerror(errno));
+	if (mkdir(FHS_HOME_ROOT, 0755) != 0 && errno != EEXIST) {
+		fhs_err("cannot create %s: %s", FHS_HOME_ROOT, strerror(errno));
 		return -1;
 	}
 
-	msl_log("populating %s", MSL_HOME_ROOT);
+	fhs_log("populating %s", FHS_HOME_ROOT);
 	populate();
 	prune(false);
 
-	if (msl_state_set(MSL_HOME_STATE, 1) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_HOME_STATE, 1) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	/*
 	 * Whether /home is usable right now depends on whether autofs had already
@@ -629,23 +654,23 @@ msl_home_enable(void)
 	 * synthetic.conf entry takes over at the next start; if not, the entry is
 	 * the only thing that will create it, and that happens at boot.
 	 */
-	if (msl_skeleton_reboot_pending(MSL_HOME_NAME))
-		msl_log("/home will appear after the next reboot.");
+	if (fhs_skeleton_reboot_pending(FHS_HOME_NAME))
+		fhs_log("/home will appear after the next reboot.");
 
 	return 0;
 }
 
 int
-msl_home_disable(void)
+fhs_home_disable(void)
 {
 	int rc;
 
-	if (!msl_is_root()) {
-		msl_err("disabling /home requires root");
+	if (!fhs_is_root()) {
+		fhs_err("disabling /home requires root");
 		return -1;
 	}
 
-	msl_log("removing symlinks from %s", MSL_HOME_ROOT);
+	fhs_log("removing symlinks from %s", FHS_HOME_ROOT);
 	prune(true);
 
 	/*
@@ -654,7 +679,7 @@ msl_home_disable(void)
 	 * it. The Data-volume directory is left in place, as skeleton removal
 	 * always does: it is the automounter's mount point as well as ours.
 	 */
-	if (msl_skeleton_remove(MSL_HOME_NAME) < 0)
+	if (fhs_skeleton_remove(FHS_HOME_NAME) < 0)
 		return -1;
 
 	rc = set_masked(false);
@@ -662,33 +687,33 @@ msl_home_disable(void)
 		return -1;
 
 	if (rc == 1) {
-		msl_log("restored the /home map in %s", AUTO_MASTER);
+		fhs_log("restored the /home map in %s", AUTO_MASTER);
 		automount_flush();
 	}
 
-	if (msl_state_set(MSL_HOME_STATE, 0) != 0)
-		msl_err("warning: could not persist state: %s", strerror(errno));
+	if (fhs_state_set(FHS_HOME_STATE, 0) != 0)
+		fhs_err("warning: could not persist state: %s", strerror(errno));
 
 	return 0;
 }
 
 int
-msl_home_sync(void)
+fhs_home_sync(void)
 {
 	struct passwd *pw;
-	struct msl_home_status st;
+	struct fhs_home_status st;
 	int users = 0;
 
-	if (!msl_is_root()) {
-		msl_err("syncing /home requires root");
+	if (!fhs_is_root()) {
+		fhs_err("syncing /home requires root");
 		return -1;
 	}
 
-	if (msl_state_get(MSL_HOME_STATE, 0) == 0)
+	if (fhs_state_get(FHS_HOME_STATE, 0) == 0)
 		return 0;	/* component is off; nothing to reconcile */
 
 	if (automounted()) {
-		msl_err("%s is held by the automounter; run 'enable' first", MSL_HOME_ROOT);
+		fhs_err("%s is held by the automounter; run 'enable' first", FHS_HOME_ROOT);
 		return -1;
 	}
 
@@ -696,7 +721,7 @@ msl_home_sync(void)
 	 * Count the eligible accounts before touching anything.
 	 *
 	 * An empty answer means "the directory service did not tell us", not "no
-	 * users exist". mslxd runs at boot and can start before opendirectoryd is
+	 * users exist". fhsxd runs at boot and can start before opendirectoryd is
 	 * ready to answer, and in that window getpwent() yields nothing. Acting on
 	 * that would be destructive twice over: populate() would create no links,
 	 * and prune() would delete every link we already have, on the grounds that
@@ -714,7 +739,7 @@ msl_home_sync(void)
 	endpwent();
 
 	if (users == 0) {
-		msl_log("/home: no local accounts visible yet "
+		fhs_log("/home: no local accounts visible yet "
 		    "(directory service not ready?); leaving it untouched");
 		return 0;
 	}
@@ -728,8 +753,8 @@ msl_home_sync(void)
 	 * this a silent no-op is indistinguishable from a silent success, which is
 	 * exactly what made a /home that vanished across a reboot hard to diagnose.
 	 */
-	if (msl_home_status(&st) == 0 && st.links != st.users)
-		msl_log("/home: %d of %d accounts linked", st.links, st.users);
+	if (fhs_home_status(&st) == 0 && st.links != st.users)
+		fhs_log("/home: %d of %d accounts linked", st.links, st.users);
 
 	return 0;
 }

@@ -3,19 +3,19 @@
 //
 // mkicons.swift
 //
-// Draws the mSL/XNU icons, so they have a source rather than being opaque
+// Draws the mSL/FHS icons, so they have a source rather than being opaque
 // binaries in the tree: the shape, the gradient and the geometry are all
 // readable and adjustable here, and `make icons` regenerates the PNGs.
 //
 // The design is deliberately a sibling of procfs's, not a copy. Both are a
 // macOS squircle with a vertical gradient and a white glyph of nodes joined by
-// lines. procfs draws a process tree - a root fanning out downwards. mSL/XNU
+// lines. procfs draws a process tree - a root fanning out downwards. mSL/FHS
 // draws a directory tree, spine on the left with branches to the right, which
 // is how a filesystem hierarchy is conventionally drawn and what this project
 // is about.
 //
 // The gradients share their lower colour and differ above: procfs runs
-// purple to blue, mSL/XNU green to blue. Side by side in System Settings they
+// purple to blue, mSL/FHS green to blue. Side by side in System Settings they
 // read as related without being mistaken for each other.
 //
 import AppKit

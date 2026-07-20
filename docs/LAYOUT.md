@@ -1,6 +1,6 @@
 # Filesystem layout
 
-The per-directory specification for the mSL/XNU layout layer: what each path
+The per-directory specification for the mSL/FHS layout layer: what each path
 means on Linux, what backs it on macOS, how it is produced, and what it costs to
 switch on and off.
 
@@ -47,7 +47,7 @@ name                    # creates an EMPTY DIRECTORY in the read-only
 name<TAB>/abs/target    # creates a SYMLINK to an absolute path
 ```
 
-Because the first form is read-only, mSL/XNU uses the second exclusively:
+Because the first form is read-only, mSL/FHS uses the second exclusively:
 
 ```
 home	/System/Volumes/Data/home
@@ -228,7 +228,7 @@ The component that requires real work.
 **Linux:** `/media/<username>/<volume-label>`, created when *that user's
 session* mounts *removable* media and removed on eject. This is the udisks2
 convention that GNOME and other desktops drive. Older systems used a flat
-`/media/<label>`; mSL/XNU targets the per-user form, which is what current Linux
+`/media/<label>`; mSL/FHS targets the per-user form, which is what current Linux
 desktops produce and which is the only form that makes sense with more than one
 user logged in.
 
@@ -249,7 +249,7 @@ every mounted `.dmg`, and every network share as removable media in the current
 user's session — wrong on device class, wrong on ownership, and wrong on the
 boot volume not being a mount at all.
 
-**Mechanism.** `mslxd` subscribes to DiskArbitration and maintains the farm as
+**Mechanism.** `fhsxd` subscribes to DiskArbitration and maintains the farm as
 volumes come and go:
 
 - `DARegisterDiskAppearedCallback` / `DARegisterDiskDisappearedCallback` for
@@ -296,7 +296,7 @@ macOS volume names and Linux path components have incompatible rules, so labels
 must be translated rather than copied. The target is what udisks2 would produce
 for the same device:
 
-| Case | macOS | udisks2 / mSL/XNU |
+| Case | macOS | udisks2 / mSL/FHS |
 |------|-------|-------------------|
 | Space in name | `/Volumes/My Disk` | `My Disk` — **kept** |
 | `/` in name | shown as `:` in POSIX paths | `_` |
@@ -322,7 +322,7 @@ path a Linux program sees follows Linux rules.
 ### User attribution
 
 Linux attributes a mount to the session that requested it. macOS has no
-equivalent notion for `/Volumes` — a mount is system-wide. mSL/XNU attributes
+equivalent notion for `/Volumes` — a mount is system-wide. mSL/FHS attributes
 each volume to **the console user at mount time** (the user owning the active
 graphical session, as reported by `SCDynamicStoreCopyConsoleUser`), which
 reproduces the single-user desktop case exactly and is a defensible
@@ -412,7 +412,7 @@ directories and symlinks pointing elsewhere.
 
 ### Staying current
 
-`mslxd` reconciles `/boot` along with the other farms. The artifacts change only
+`fhsxd` reconciles `/boot` along with the other farms. The artifacts change only
 when macOS is updated, but that is precisely when `darwin-25.5.0` would
 otherwise be left pointing at a kernel version that no longer exists.
 
@@ -459,7 +459,7 @@ for site-specific served data, and nothing populates it automatically.
 ### Never taking ownership of a system directory
 
 Pointing at a macOS directory required a rule the skeleton did not previously
-need. Every earlier entry pointed at `MSL_DATA_ROOT/<name>`, which the layer
+need. Every earlier entry pointed at `FHS_DATA_ROOT/<name>`, which the layer
 creates and owns, so the skeleton simply created its target. `mkdir`-ing over
 `/var/root` would be a different act entirely: taking possession of a directory
 that is macOS's, with its own ownership and modes (`/var/root` is `0750`,
@@ -566,7 +566,7 @@ without privilege, on scratch files the test process owns.
 kernel state, and cannot be symlinks. They are separate projects with their own
 kernel extensions, installers, and toggles.
 
-mSL/XNU **reports their status and never changes it.** The menu bar shows
+mSL/FHS **reports their status and never changes it.** The menu bar shows
 whether each is present and mounted; it offers no control over them. Two
 applications independently mounting and unmounting the same path would produce
 races and status displays that contradict the actual system.

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_visibility.h
+ * fhs_visibility.h
  *
  * Finder visibility of root-level directories.
  *
@@ -20,34 +20,34 @@
  *   /tmp /usr /var
  *   /dev                    silent      - devfs accepts chflags and ignores it
  *
- * The last case is why msl_vis_set() verifies rather than trusting its return
+ * The last case is why fhs_vis_set() verifies rather than trusting its return
  * value: chflags(2) on /dev reports success and changes nothing, so code that
  * believed it would tell the user a directory had been revealed while the
  * Finder carried on hiding it.
  */
-#ifndef MSL_VISIBILITY_H
-#define MSL_VISIBILITY_H
+#ifndef FHS_VISIBILITY_H
+#define FHS_VISIBILITY_H
 
 #include <stdbool.h>
 #include <stddef.h>
 
 /* Why a node's visibility cannot be changed. */
-enum msl_vis_lock {
-	MSL_VIS_CHANGEABLE = 0,  /* the flag can be set and cleared */
-	MSL_VIS_ABSENT,          /* nothing exists at this path */
-	MSL_VIS_SIP,             /* SF_RESTRICTED: System Integrity Protection */
-	MSL_VIS_READONLY,        /* the entry lives on the sealed system volume */
-	MSL_VIS_UNSUPPORTED,     /* the filesystem ignores flag changes (devfs) */
-	MSL_VIS_PROTECTED,       /* measured to be refused, cause not introspectable */
+enum fhs_vis_lock {
+	FHS_VIS_CHANGEABLE = 0,  /* the flag can be set and cleared */
+	FHS_VIS_ABSENT,          /* nothing exists at this path */
+	FHS_VIS_SIP,             /* SF_RESTRICTED: System Integrity Protection */
+	FHS_VIS_READONLY,        /* the entry lives on the sealed system volume */
+	FHS_VIS_UNSUPPORTED,     /* the filesystem ignores flag changes (devfs) */
+	FHS_VIS_PROTECTED,       /* measured to be refused, cause not introspectable */
 };
 
-struct msl_vis_status {
+struct fhs_vis_status {
 	bool exists;
 	bool hidden;             /* UF_HIDDEN is set (there is no SF_HIDDEN) */
 	bool symlink;            /* the entry itself is a symlink */
 	bool browsable;          /* if a mount point, it is not `nobrowse` */
 	bool is_mount;           /* a filesystem is mounted here */
-	enum msl_vis_lock lock;
+	enum fhs_vis_lock lock;
 	char fstype[16];         /* filesystem holding the entry */
 };
 
@@ -56,22 +56,22 @@ struct msl_vis_status {
  * Both the CLI and the GUI iterate this, so the two never drift apart on which
  * directories exist or what they are called.
  */
-struct msl_node {
+struct fhs_node {
 	const char *path;
 	bool linux_only;    /* part of the Linux layout, not native to macOS */
 };
 
-extern const struct msl_node msl_root_nodes[];
-extern const size_t msl_root_node_count;
+extern const struct fhs_node fhs_root_nodes[];
+extern const size_t fhs_root_node_count;
 
 /* Look up a node by path or bare name ("opt" and "/opt" both work). */
-const struct msl_node *msl_node_find(const char *name);
+const struct fhs_node *fhs_node_find(const char *name);
 
 /* Human-readable reason for a lock, or NULL when changeable. */
-const char *msl_vis_lock_reason(enum msl_vis_lock lock);
+const char *fhs_vis_lock_reason(enum fhs_vis_lock lock);
 
 /* Inspect `path`. Returns 0, or -1 only on a malformed argument. */
-int msl_vis_status(const char *path, struct msl_vis_status *st);
+int fhs_vis_status(const char *path, struct fhs_vis_status *st);
 
 /*
  * Show or hide `path` in the Finder. Requires root.
@@ -81,7 +81,7 @@ int msl_vis_status(const char *path, struct msl_vis_status *st);
  * so a filesystem that accepts the call and does nothing is reported as a
  * failure rather than as success.
  */
-int msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len);
+int fhs_vis_set(const char *path, bool hidden, char *reason, size_t reason_len);
 
 /*
  * Make a mount point browsable, or not, by clearing or setting `nobrowse`.
@@ -102,9 +102,9 @@ int msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len);
  * rejected up front here so the caller gets that reason rather than mount(8)'s
  * exit status. The function remains useful for any other nobrowse mount.
  *
- * Requires root. Verifies afterwards, like msl_vis_set().
+ * Requires root. Verifies afterwards, like fhs_vis_set().
  */
-int msl_vis_set_browsable(const char *path, bool browsable,
+int fhs_vis_set_browsable(const char *path, bool browsable,
                           char *reason, size_t reason_len);
 
-#endif /* MSL_VISIBILITY_H */
+#endif /* FHS_VISIBILITY_H */

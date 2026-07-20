@@ -1,33 +1,33 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * mslctl.c
+ * fhsctl.c
  *
  * Command-line control for the mSL/XNU layout layer. This is the mechanism the
  * daemon and GUI will drive; having it as a tool first means every component
  * can be exercised and verified before either of them exists.
  *
- *     mslctl status              show every component
- *     mslctl home status         show the /home component
- *     mslctl home enable         requires root
- *     mslctl home disable        requires root
- *     mslctl home sync           requires root
+ *     fhsctl status              show every component
+ *     fhsctl home status         show the /home component
+ *     fhsctl home enable         requires root
+ *     fhsctl home disable        requires root
+ *     fhsctl home sync           requires root
  */
-#include "msl.h"
-#include "msl_boot.h"
-#include "msl_detect.h"
-#include "msl_home.h"
-#include "msl_media.h"
-#include "msl_mnt.h"
-#include "msl_simple.h"
-#include "msl_visibility.h"
+#include "fhs.h"
+#include "fhs_boot.h"
+#include "fhs_detect.h"
+#include "fhs_home.h"
+#include "fhs_media.h"
+#include "fhs_mnt.h"
+#include "fhs_simple.h"
+#include "fhs_visibility.h"
 
 #include <stdio.h>
 #include <string.h>
 
 /* One-line summary of a pseudo-filesystem we only observe. */
 static const char *
-describe(const struct msl_pseudofs *fs)
+describe(const struct fhs_pseudofs *fs)
 {
 	if (fs->mounted)
 		return "mounted";
@@ -39,10 +39,10 @@ describe(const struct msl_pseudofs *fs)
 static int
 home_status(void)
 {
-	struct msl_home_status st;
+	struct fhs_home_status st;
 
-	if (msl_home_status(&st) != 0) {
-		msl_err("cannot read /home status");
+	if (fhs_home_status(&st) != 0) {
+		fhs_err("cannot read /home status");
 		return 1;
 	}
 
@@ -71,26 +71,26 @@ home_status(void)
 		       "        after you restart. The symlinks below it are ready.\n");
 	else if (st.enabled && st.automounter)
 		printf("\n  note: enabled, but the automounter still owns %s.\n"
-		       "        Run 'sudo mslctl home enable' again, or reboot.\n",
-		       MSL_HOME_ROOT);
+		       "        Run 'sudo fhsctl home enable' again, or reboot.\n",
+		       FHS_HOME_ROOT);
 	else if (st.enabled && st.links < st.users)
 		printf("\n  note: %d account(s) have no /home entry. "
-		       "Run 'sudo mslctl home sync'.\n", st.users - st.links);
+		       "Run 'sudo fhsctl home sync'.\n", st.users - st.links);
 
 	return 0;
 }
 
 /* Stable one-word name for a visibility lock, for the porcelain interface. */
 static const char *
-vis_lock_word(enum msl_vis_lock lock)
+vis_lock_word(enum fhs_vis_lock lock)
 {
 	switch (lock) {
-	case MSL_VIS_CHANGEABLE: return "changeable";
-	case MSL_VIS_ABSENT:     return "absent";
-	case MSL_VIS_SIP:        return "sip";
-	case MSL_VIS_READONLY:   return "readonly";
-	case MSL_VIS_UNSUPPORTED: return "unsupported";
-	case MSL_VIS_PROTECTED:  return "protected";
+	case FHS_VIS_CHANGEABLE: return "changeable";
+	case FHS_VIS_ABSENT:     return "absent";
+	case FHS_VIS_SIP:        return "sip";
+	case FHS_VIS_READONLY:   return "readonly";
+	case FHS_VIS_UNSUPPORTED: return "unsupported";
+	case FHS_VIS_PROTECTED:  return "protected";
 	}
 	return "unknown";
 }
@@ -106,12 +106,12 @@ vis_lock_word(enum msl_vis_lock lock)
 static int
 porcelain(void)
 {
-	struct msl_home_status home;
-	struct msl_mnt_status mnt;
-	struct msl_media_status media;
-	struct msl_pseudofs proc, sys;
+	struct fhs_home_status home;
+	struct fhs_mnt_status mnt;
+	struct fhs_media_status media;
+	struct fhs_pseudofs proc, sys;
 
-	if (msl_home_status(&home) == 0) {
+	if (fhs_home_status(&home) == 0) {
 		printf("home.enabled=%d\n", home.enabled);
 		printf("home.automounter=%d\n", home.automounter);
 		printf("home.masked=%d\n", home.masked);
@@ -123,7 +123,7 @@ porcelain(void)
 		printf("home.reboot_pending=%d\n", home.reboot_pending);
 	}
 
-	if (msl_mnt_status(&mnt) == 0) {
+	if (fhs_mnt_status(&mnt) == 0) {
 		printf("mnt.enabled=%d\n", mnt.enabled);
 		printf("mnt.declared=%d\n", mnt.skel.declared);
 		printf("mnt.conflicting=%d\n", mnt.skel.conflicting);
@@ -132,8 +132,8 @@ porcelain(void)
 		printf("mnt.mounts=%d\n", mnt.mounts);
 
 		/* The mounts themselves, so the GUI can list them. */
-		struct msl_mnt_mount mm[64];
-		int nm = msl_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
+		struct fhs_mnt_mount mm[64];
+		int nm = fhs_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
 		for (int i = 0; i < nm; i++) {
 			printf("mnt.mount.%d.name=%s\n", i, mm[i].name);
 			printf("mnt.mount.%d.path=%s\n", i, mm[i].path);
@@ -141,7 +141,7 @@ porcelain(void)
 		}
 	}
 
-	if (msl_media_status(&media) == 0) {
+	if (fhs_media_status(&media) == 0) {
 		printf("media.enabled=%d\n", media.enabled);
 		printf("media.declared=%d\n", media.skel.declared);
 		printf("media.conflicting=%d\n", media.skel.conflicting);
@@ -154,8 +154,8 @@ porcelain(void)
 	}
 
 	{
-		struct msl_boot_status boot;
-		if (msl_boot_status(&boot) == 0) {
+		struct fhs_boot_status boot;
+		if (fhs_boot_status(&boot) == 0) {
 			printf("boot.enabled=%d\n", boot.enabled);
 			printf("boot.declared=%d\n", boot.skel.declared);
 			printf("boot.conflicting=%d\n", boot.skel.conflicting);
@@ -168,11 +168,11 @@ porcelain(void)
 		}
 	}
 
-	for (size_t i = 0; i < msl_simple_node_count; i++) {
-		const struct msl_simple_def *def = &msl_simple_nodes[i];
-		struct msl_simple_status ss;
+	for (size_t i = 0; i < fhs_simple_node_count; i++) {
+		const struct fhs_simple_def *def = &fhs_simple_nodes[i];
+		struct fhs_simple_status ss;
 
-		if (msl_simple_status(def, &ss) != 0)
+		if (fhs_simple_status(def, &ss) != 0)
 			continue;
 
 		printf("%s.enabled=%d\n", def->name, ss.enabled);
@@ -184,21 +184,21 @@ porcelain(void)
 	}
 
 	{
-		struct msl_pseudofs dev;
-		msl_detect_devfs(&dev);
+		struct fhs_pseudofs dev;
+		fhs_detect_devfs(&dev);
 		printf("dev.installed=%d\n", dev.installed);
 		printf("dev.mounted=%d\n", dev.mounted);
 	}
 
-	msl_detect_procfs(&proc);
-	msl_detect_sysfs(&sys);
+	fhs_detect_procfs(&proc);
+	fhs_detect_sysfs(&sys);
 	printf("proc.installed=%d\n", proc.installed);
 	printf("proc.mounted=%d\n", proc.mounted);
 	printf("sys.installed=%d\n", sys.installed);
 	printf("sys.mounted=%d\n", sys.mounted);
 
-	printf("daemon.running=%d\n", msl_daemon_running());
-	printf("version=%s\n", MSL_VERSION);
+	printf("daemon.running=%d\n", fhs_daemon_running());
+	printf("version=%s\n", FHS_VERSION);
 
 	/*
 	 * Every root-level node, so the menu can present them all with a
@@ -206,16 +206,16 @@ porcelain(void)
 	 * displays; `nodes` gives it that order without hard-coding the list.
 	 */
 	printf("nodes=");
-	for (size_t i = 0; i < msl_root_node_count; i++)
-		printf("%s%s", i ? "," : "", msl_root_nodes[i].path + 1);
+	for (size_t i = 0; i < fhs_root_node_count; i++)
+		printf("%s%s", i ? "," : "", fhs_root_nodes[i].path + 1);
 	printf("\n");
 
-	for (size_t i = 0; i < msl_root_node_count; i++) {
-		const struct msl_node *node = &msl_root_nodes[i];
+	for (size_t i = 0; i < fhs_root_node_count; i++) {
+		const struct fhs_node *node = &fhs_root_nodes[i];
 		const char *name = node->path + 1;   /* drop the leading slash */
-		struct msl_vis_status vs;
+		struct fhs_vis_status vs;
 
-		if (msl_vis_status(node->path, &vs) != 0)
+		if (fhs_vis_status(node->path, &vs) != 0)
 			continue;
 
 		printf("vis.%s.exists=%d\n",    name, vs.exists);
@@ -232,12 +232,12 @@ porcelain(void)
 
 /* One of the skeleton-only nodes: /root, /run, /srv. */
 static int
-simple_status(const struct msl_simple_def *def)
+simple_status(const struct fhs_simple_def *def)
 {
-	struct msl_simple_status st;
+	struct fhs_simple_status st;
 
-	if (msl_simple_status(def, &st) != 0) {
-		msl_err("cannot read /%s status", def->name);
+	if (fhs_simple_status(def, &st) != 0) {
+		fhs_err("cannot read /%s status", def->name);
 		return 1;
 	}
 
@@ -271,28 +271,28 @@ simple_status(const struct msl_simple_def *def)
 }
 
 static int
-simple_command(const struct msl_simple_def *def, const char *verb)
+simple_command(const struct fhs_simple_def *def, const char *verb)
 {
 	if (verb == NULL || strcmp(verb, "status") == 0)
 		return simple_status(def);
 
 	if (strcmp(verb, "enable") == 0)
-		return msl_simple_enable(def) == 0 ? 0 : 1;
+		return fhs_simple_enable(def) == 0 ? 0 : 1;
 
 	if (strcmp(verb, "disable") == 0)
-		return msl_simple_disable(def) == 0 ? 0 : 1;
+		return fhs_simple_disable(def) == 0 ? 0 : 1;
 
-	msl_err("unknown command: %s %s", def->name, verb);
+	fhs_err("unknown command: %s %s", def->name, verb);
 	return 2;
 }
 
 static int
 boot_status(void)
 {
-	struct msl_boot_status st;
+	struct fhs_boot_status st;
 
-	if (msl_boot_status(&st) != 0) {
-		msl_err("cannot read /boot status");
+	if (fhs_boot_status(&st) != 0) {
+		fhs_err("cannot read /boot status");
 		return 1;
 	}
 
@@ -326,25 +326,25 @@ boot_command(const char *verb)
 		return boot_status();
 
 	if (strcmp(verb, "enable") == 0)
-		return msl_boot_enable() == 0 ? 0 : 1;
+		return fhs_boot_enable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "disable") == 0)
-		return msl_boot_disable() == 0 ? 0 : 1;
+		return fhs_boot_disable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "sync") == 0)
-		return msl_boot_sync() == 0 ? 0 : 1;
+		return fhs_boot_sync() == 0 ? 0 : 1;
 
-	msl_err("unknown command: boot %s", verb);
+	fhs_err("unknown command: boot %s", verb);
 	return 2;
 }
 
 static int
 media_status(void)
 {
-	struct msl_media_status st;
+	struct fhs_media_status st;
 
-	if (msl_media_status(&st) != 0) {
-		msl_err("cannot read /media status");
+	if (fhs_media_status(&st) != 0) {
+		fhs_err("cannot read /media status");
 		return 1;
 	}
 
@@ -361,7 +361,7 @@ media_status(void)
 
 	if (st.stale > 0)
 		printf("\n  note: %d link(s) point at volumes that are no longer mounted.\n"
-		       "        Run 'sudo mslctl media sync' to clear them. Until mslxd\n"
+		       "        Run 'sudo fhsctl media sync' to clear them. Until fhsxd\n"
 		       "        watches for ejects, this is expected after unmounting.\n",
 		       st.stale);
 
@@ -385,20 +385,20 @@ media_command(const char *verb)
 		return media_status();
 
 	if (strcmp(verb, "enable") == 0)
-		return msl_media_enable() == 0 ? 0 : 1;
+		return fhs_media_enable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "disable") == 0)
-		return msl_media_disable() == 0 ? 0 : 1;
+		return fhs_media_disable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "sync") == 0)
-		return msl_media_sync() == 0 ? 0 : 1;
+		return fhs_media_sync() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "list") == 0) {
-		struct msl_volume vols[64];
-		int n = msl_media_scan(vols, 64);
+		struct fhs_volume vols[64];
+		int n = fhs_media_scan(vols, 64);
 
 		if (n < 0) {
-			msl_err("cannot enumerate volumes");
+			fhs_err("cannot enumerate volumes");
 			return 1;
 		}
 		if (n == 0) {
@@ -410,17 +410,17 @@ media_command(const char *verb)
 		return 0;
 	}
 
-	msl_err("unknown command: media %s", verb);
+	fhs_err("unknown command: media %s", verb);
 	return 2;
 }
 
 static int
 mnt_status(void)
 {
-	struct msl_mnt_status st;
+	struct fhs_mnt_status st;
 
-	if (msl_mnt_status(&st) != 0) {
-		msl_err("cannot read /mnt status");
+	if (fhs_mnt_status(&st) != 0) {
+		fhs_err("cannot read /mnt status");
 		return 1;
 	}
 
@@ -431,8 +431,8 @@ mnt_status(void)
 	printf("  present      %s\n", st.skel.active ? "yes, /mnt exists" : "no");
 
 	if (st.mounts > 0) {
-		struct msl_mnt_mount mm[64];
-		int n = msl_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
+		struct fhs_mnt_mount mm[64];
+		int n = fhs_mnt_scan(mm, (int)(sizeof(mm) / sizeof(mm[0])));
 
 		printf("  mounts       %d\n", st.mounts);
 		for (int i = 0; i < n; i++)
@@ -463,18 +463,18 @@ mnt_command(const char *verb)
 		return mnt_status();
 
 	if (strcmp(verb, "enable") == 0)
-		return msl_mnt_enable() == 0 ? 0 : 1;
+		return fhs_mnt_enable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "disable") == 0)
-		return msl_mnt_disable() == 0 ? 0 : 1;
+		return fhs_mnt_disable() == 0 ? 0 : 1;
 
-	msl_err("unknown command: mnt %s", verb);
+	fhs_err("unknown command: mnt %s", verb);
 	return 2;
 }
 
 /* One-word state for a node's Finder visibility. */
 static const char *
-vis_word(const struct msl_vis_status *st)
+vis_word(const struct fhs_vis_status *st)
 {
 	if (!st->exists)
 		return "absent";
@@ -486,15 +486,15 @@ vis_list(void)
 {
 	printf("%-14s %-8s %-10s %s\n", "NODE", "FINDER", "FS", "NOTE");
 
-	for (size_t i = 0; i < msl_root_node_count; i++) {
-		const struct msl_node *node = &msl_root_nodes[i];
-		struct msl_vis_status st;
+	for (size_t i = 0; i < fhs_root_node_count; i++) {
+		const struct fhs_node *node = &fhs_root_nodes[i];
+		struct fhs_vis_status st;
 		const char *reason;
 
-		if (msl_vis_status(node->path, &st) != 0)
+		if (fhs_vis_status(node->path, &st) != 0)
 			continue;
 
-		reason = msl_vis_lock_reason(st.lock);
+		reason = fhs_vis_lock_reason(st.lock);
 
 		/*
 		 * A node that exists but cannot be changed is the interesting case,
@@ -517,7 +517,7 @@ static int
 vis_command(int argc, char **argv)
 {
 	const char *verb = argc > 2 ? argv[2] : NULL;
-	const struct msl_node *node;
+	const struct fhs_node *node;
 	char reason[512];
 	bool hide;
 
@@ -528,50 +528,50 @@ vis_command(int argc, char **argv)
 		bool on;
 
 		if (argc < 5 || (strcmp(argv[4], "on") != 0 && strcmp(argv[4], "off") != 0)) {
-			msl_err("usage: mslctl vis browse <node> on|off");
+			fhs_err("usage: fhsctl vis browse <node> on|off");
 			return 2;
 		}
 
-		node = msl_node_find(argv[3]);
+		node = fhs_node_find(argv[3]);
 		if (node == NULL) {
-			msl_err("unknown node: %s", argv[3]);
+			fhs_err("unknown node: %s", argv[3]);
 			return 2;
 		}
 
 		on = strcmp(argv[4], "on") == 0;
-		if (msl_vis_set_browsable(node->path, on, reason, sizeof(reason)) != 0) {
-			msl_err("%s", reason);
+		if (fhs_vis_set_browsable(node->path, on, reason, sizeof(reason)) != 0) {
+			fhs_err("%s", reason);
 			return 1;
 		}
 
-		msl_log("%s is now %s to the Finder", node->path,
+		fhs_log("%s is now %s to the Finder", node->path,
 		    on ? "browsable" : "hidden from browsing");
 		return 0;
 	}
 
 	hide = strcmp(verb, "hide") == 0;
 	if (!hide && strcmp(verb, "show") != 0) {
-		msl_err("unknown command: vis %s", verb);
+		fhs_err("unknown command: vis %s", verb);
 		return 2;
 	}
 
 	if (argc < 4) {
-		msl_err("usage: mslctl vis %s <node>", verb);
+		fhs_err("usage: fhsctl vis %s <node>", verb);
 		return 2;
 	}
 
-	node = msl_node_find(argv[3]);
+	node = fhs_node_find(argv[3]);
 	if (node == NULL) {
-		msl_err("unknown node: %s", argv[3]);
+		fhs_err("unknown node: %s", argv[3]);
 		return 2;
 	}
 
-	if (msl_vis_set(node->path, hide, reason, sizeof(reason)) != 0) {
-		msl_err("%s", reason);
+	if (fhs_vis_set(node->path, hide, reason, sizeof(reason)) != 0) {
+		fhs_err("%s", reason);
 		return 1;
 	}
 
-	msl_log("%s is now %s in the Finder", node->path, hide ? "hidden" : "shown");
+	fhs_log("%s is now %s in the Finder", node->path, hide ? "hidden" : "shown");
 	return 0;
 }
 
@@ -582,17 +582,17 @@ home_command(const char *verb)
 		return home_status();
 
 	if (strcmp(verb, "enable") == 0)
-		return msl_home_enable() == 0 ? 0 : 1;
+		return fhs_home_enable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "disable") == 0)
-		return msl_home_disable() == 0 ? 0 : 1;
+		return fhs_home_disable() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "sync") == 0)
-		return msl_home_sync() == 0 ? 0 : 1;
+		return fhs_home_sync() == 0 ? 0 : 1;
 
 	if (strcmp(verb, "check") == 0) {
 		char reason[512];
-		if (msl_home_check_safe(reason, sizeof(reason)) != 0) {
+		if (fhs_home_check_safe(reason, sizeof(reason)) != 0) {
 			printf("unsafe: %s\n", reason);
 			return 1;
 		}
@@ -600,7 +600,7 @@ home_command(const char *verb)
 		return 0;
 	}
 
-	msl_err("unknown command: home %s", verb);
+	fhs_err("unknown command: home %s", verb);
 	return 2;
 }
 
@@ -608,7 +608,7 @@ static void
 usage(void)
 {
 	fprintf(stderr,
-	    "usage: mslctl <component> <command>\n"
+	    "usage: fhsctl <component> <command>\n"
 	    "\n"
 	    "components:\n"
 	    "  home     Linux-style /home/<user> paths for local accounts\n"
@@ -651,7 +651,7 @@ main(int argc, char **argv)
 
 	/* Bare `status` reports every component. */
 	if (strcmp(argv[1], "status") == 0) {
-		struct msl_pseudofs proc, sys;
+		struct fhs_pseudofs proc, sys;
 		int rc = home_status();
 		printf("\n");
 		if (mnt_status() != 0)
@@ -664,22 +664,22 @@ main(int argc, char **argv)
 		if (boot_status() != 0)
 			rc = 1;
 
-		for (size_t i = 0; i < msl_simple_node_count; i++) {
+		for (size_t i = 0; i < fhs_simple_node_count; i++) {
 			printf("\n");
-			if (simple_status(&msl_simple_nodes[i]) != 0)
+			if (simple_status(&fhs_simple_nodes[i]) != 0)
 				rc = 1;
 		}
 
-		msl_detect_procfs(&proc);
-		msl_detect_sysfs(&sys);
-		struct msl_pseudofs dev;
-		msl_detect_devfs(&dev);
+		fhs_detect_procfs(&proc);
+		fhs_detect_sysfs(&sys);
+		struct fhs_pseudofs dev;
+		fhs_detect_devfs(&dev);
 		printf("\npseudo-filesystems (managed by their own projects)\n");
 		printf("  /dev         %s\n", describe(&dev));
 		printf("  /proc        %s\n", describe(&proc));
 		printf("  /sys         %s\n", describe(&sys));
-		printf("\nmslxd        %s\n",
-		    msl_daemon_running() ? "running" : "not running");
+		printf("\nfhsxd        %s\n",
+		    fhs_daemon_running() ? "running" : "not running");
 		return rc;
 	}
 
@@ -699,12 +699,12 @@ main(int argc, char **argv)
 		return vis_command(argc, argv);
 
 	{
-		const struct msl_simple_def *def = msl_simple_find(argv[1]);
+		const struct fhs_simple_def *def = fhs_simple_find(argv[1]);
 		if (def != NULL)
 			return simple_command(def, argc > 2 ? argv[2] : NULL);
 	}
 
-	msl_err("unknown component: %s", argv[1]);
+	fhs_err("unknown component: %s", argv[1]);
 	usage();
 	return 2;
 }

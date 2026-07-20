@@ -1,12 +1,12 @@
 //
 // Copyright (c) 2026 Sunneva N. Mariu
 //
-// MSLState.swift
+// FHSState.swift
 //
 // Shared between the menu-bar app and the preference pane: reading the layer's
 // state, and applying changes to it.
 //
-// State comes from `mslctl porcelain`, which prints one key=value per line.
+// State comes from `fhsctl porcelain`, which prints one key=value per line.
 // Parsing the human-readable output instead would couple the GUI to wording
 // that exists to be read by people and will be reworded; the porcelain keys are
 // an interface. Both surfaces going through the same tool also means the GUI
@@ -21,9 +21,9 @@
 //
 import Foundation
 
-let kMslctl = "/usr/local/sbin/mslctl"
+let kFhsctl = "/usr/local/sbin/fhsctl"
 
-/// The components mSL/XNU can switch on and off, in the order they are
+/// The components mSL/FHS can switch on and off, in the order they are
 /// presented. The first three each have real work behind them; the last three
 /// are skeleton entries only.
 enum Component: String, CaseIterable {
@@ -104,13 +104,13 @@ struct NodeInfo {
 }
 
 /// A snapshot of the whole layer.
-struct MSLState {
+struct FHSState {
     private var values: [String: String] = [:]
 
     var available: Bool { !values.isEmpty }
 
     init() {
-        for line in MSLState.run(kMslctl, ["porcelain"]).split(separator: "\n") {
+        for line in FHSState.run(kFhsctl, ["porcelain"]).split(separator: "\n") {
             let parts = line.split(separator: "=", maxSplits: 1,
                                    omittingEmptySubsequences: false)
             if parts.count == 2 {
@@ -298,7 +298,7 @@ struct MSLState {
 
         let commands = changes
             .sorted { $0.key.rawValue < $1.key.rawValue }
-            .map { "\(kMslctl) \($0.key.rawValue) \($0.value ? "enable" : "disable")" }
+            .map { "\(kFhsctl) \($0.key.rawValue) \($0.value ? "enable" : "disable")" }
 
         return runPrivileged(commands.joined(separator: " && "))
     }
@@ -306,7 +306,7 @@ struct MSLState {
     /// Clear links left behind by volumes that were ejected.
     @discardableResult
     static func syncMedia() -> Bool {
-        runPrivileged("\(kMslctl) media sync")
+        runPrivileged("\(kFhsctl) media sync")
     }
 
     /// Show or hide a node in the Finder. One menu click is one action, so this
@@ -314,7 +314,7 @@ struct MSLState {
     /// is for its multi-switch Apply, not for a single toggle.
     @discardableResult
     static func setVisible(_ name: String, _ visible: Bool) -> Bool {
-        runPrivileged("\(kMslctl) vis \(visible ? "show" : "hide") \(name)")
+        runPrivileged("\(kFhsctl) vis \(visible ? "show" : "hide") \(name)")
     }
 
     /// Apply component and visibility changes together, in one authorized step.
@@ -330,10 +330,10 @@ struct MSLState {
         var commands: [String] = []
 
         for (c, on) in components.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            commands.append("\(kMslctl) \(c.rawValue) \(on ? "enable" : "disable")")
+            commands.append("\(kFhsctl) \(c.rawValue) \(on ? "enable" : "disable")")
         }
         for (name, visible) in visibility.sorted(by: { $0.key < $1.key }) {
-            commands.append("\(kMslctl) vis \(visible ? "show" : "hide") \(name)")
+            commands.append("\(kFhsctl) vis \(visible ? "show" : "hide") \(name)")
         }
 
         guard !commands.isEmpty else { return true }

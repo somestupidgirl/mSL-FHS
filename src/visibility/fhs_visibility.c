@@ -1,13 +1,13 @@
 /*
  * Copyright (c) 2026 Sunneva N. Mariu
  *
- * msl_visibility.c
+ * fhs_visibility.c
  *
- * Finder visibility of root-level directories. See msl_visibility.h for the
+ * Finder visibility of root-level directories. See fhs_visibility.h for the
  * measured behaviour this is built around.
  */
-#include "msl.h"
-#include "msl_visibility.h"
+#include "fhs.h"
+#include "fhs_visibility.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -30,7 +30,7 @@
  * origin, because a user looking for a directory knows its name and not
  * whether macOS or this layer put it there.
  */
-const struct msl_node msl_root_nodes[] = {
+const struct fhs_node fhs_root_nodes[] = {
 	{ "/Applications", false },
 	{ "/bin",          false },
 	{ "/boot",         true  },
@@ -53,44 +53,44 @@ const struct msl_node msl_root_nodes[] = {
 	{ "/Volumes",      false },
 };
 
-const size_t msl_root_node_count =
-    sizeof(msl_root_nodes) / sizeof(msl_root_nodes[0]);
+const size_t fhs_root_node_count =
+    sizeof(fhs_root_nodes) / sizeof(fhs_root_nodes[0]);
 
-const struct msl_node *
-msl_node_find(const char *name)
+const struct fhs_node *
+fhs_node_find(const char *name)
 {
 	if (name == NULL || name[0] == '\0')
 		return NULL;
 
-	for (size_t i = 0; i < msl_root_node_count; i++) {
-		const char *path = msl_root_nodes[i].path;
+	for (size_t i = 0; i < fhs_root_node_count; i++) {
+		const char *path = fhs_root_nodes[i].path;
 
 		if (strcmp(path, name) == 0)
-			return &msl_root_nodes[i];
+			return &fhs_root_nodes[i];
 
 		/* Accept a bare name, so "opt" finds "/opt". */
 		if (name[0] != '/' && strcmp(path + 1, name) == 0)
-			return &msl_root_nodes[i];
+			return &fhs_root_nodes[i];
 	}
 
 	return NULL;
 }
 
 const char *
-msl_vis_lock_reason(enum msl_vis_lock lock)
+fhs_vis_lock_reason(enum fhs_vis_lock lock)
 {
 	switch (lock) {
-	case MSL_VIS_CHANGEABLE:
+	case FHS_VIS_CHANGEABLE:
 		return NULL;
-	case MSL_VIS_ABSENT:
+	case FHS_VIS_ABSENT:
 		return "does not exist";
-	case MSL_VIS_SIP:
+	case FHS_VIS_SIP:
 		return "protected by System Integrity Protection";
-	case MSL_VIS_READONLY:
+	case FHS_VIS_READONLY:
 		return "the entry is on the sealed system volume";
-	case MSL_VIS_UNSUPPORTED:
+	case FHS_VIS_UNSUPPORTED:
 		return "this filesystem ignores visibility flags";
-	case MSL_VIS_PROTECTED:
+	case FHS_VIS_PROTECTED:
 		return "the system refuses to change this entry";
 	}
 	return "unknown";
@@ -139,7 +139,7 @@ entry_fs(const char *path, bool symlink, struct statfs *out)
  * recorded from measurement rather than derived.
  *
  * This list is a display hint: it stops the GUI offering a toggle that cannot
- * work. It is not the safety mechanism - msl_vis_set() verifies every change
+ * work. It is not the safety mechanism - fhs_vis_set() verifies every change
  * regardless, so an unlisted path that turns out to be protected is reported
  * accurately even though it was offered.
  */
@@ -159,7 +159,7 @@ is_protected(const char *path)
 }
 
 int
-msl_vis_status(const char *path, struct msl_vis_status *st)
+fhs_vis_status(const char *path, struct fhs_vis_status *st)
 {
 	struct stat sb;
 	struct statfs fs;
@@ -172,7 +172,7 @@ msl_vis_status(const char *path, struct msl_vis_status *st)
 	memset(st, 0, sizeof(*st));
 
 	if (lstat(path, &sb) != 0) {
-		st->lock = MSL_VIS_ABSENT;
+		st->lock = FHS_VIS_ABSENT;
 		return 0;
 	}
 
@@ -195,27 +195,27 @@ msl_vis_status(const char *path, struct msl_vis_status *st)
 	 * it refuses regardless of anything else about the volume.
 	 */
 	if (sb.st_flags & SF_RESTRICTED)
-		st->lock = MSL_VIS_SIP;
+		st->lock = FHS_VIS_SIP;
 	else if (is_protected(path))
-		st->lock = MSL_VIS_PROTECTED;
+		st->lock = FHS_VIS_PROTECTED;
 	else if (strcmp(st->fstype, "devfs") == 0)
-		st->lock = MSL_VIS_UNSUPPORTED;
+		st->lock = FHS_VIS_UNSUPPORTED;
 	else if (st->fstype[0] != '\0' && (fs.f_flags & MNT_RDONLY) != 0)
-		st->lock = MSL_VIS_READONLY;
+		st->lock = FHS_VIS_READONLY;
 	else
-		st->lock = MSL_VIS_CHANGEABLE;
+		st->lock = FHS_VIS_CHANGEABLE;
 
 	return 0;
 }
 
 int
-msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
+fhs_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
 {
-	struct msl_vis_status before, after;
+	struct fhs_vis_status before, after;
 	u_int flags;
 	struct stat sb;
 
-	if (msl_vis_status(path, &before) != 0) {
+	if (fhs_vis_status(path, &before) != 0) {
 		if (reason != NULL)
 			snprintf(reason, reason_len, "invalid path");
 		return -1;
@@ -235,10 +235,10 @@ msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
 	 * would produce the same outcome with a worse message - "Operation not
 	 * permitted" says nothing about SIP being the reason.
 	 */
-	if (before.lock != MSL_VIS_CHANGEABLE) {
+	if (before.lock != FHS_VIS_CHANGEABLE) {
 		if (reason != NULL)
 			snprintf(reason, reason_len, "%s: %s", path,
-			    msl_vis_lock_reason(before.lock));
+			    fhs_vis_lock_reason(before.lock));
 		return -1;
 	}
 
@@ -283,7 +283,7 @@ msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
 	 * while the Finder went on hiding it. Anything that claims to have worked
 	 * has to prove it.
 	 */
-	if (msl_vis_status(path, &after) == 0 && after.hidden != hidden) {
+	if (fhs_vis_status(path, &after) == 0 && after.hidden != hidden) {
 		if (reason != NULL)
 			snprintf(reason, reason_len,
 			    "%s: the filesystem accepted the change and ignored it", path);
@@ -294,16 +294,16 @@ msl_vis_set(const char *path, bool hidden, char *reason, size_t reason_len)
 }
 
 int
-msl_vis_set_browsable(const char *path, bool browsable,
+fhs_vis_set_browsable(const char *path, bool browsable,
                       char *reason, size_t reason_len)
 {
-	struct msl_vis_status before, after;
+	struct fhs_vis_status before, after;
 	const char *const argv[] = {
 		"/sbin/mount", "-u", "-o", browsable ? "browse" : "nobrowse", path, NULL
 	};
 	int rc;
 
-	if (msl_vis_status(path, &before) != 0 || !before.exists) {
+	if (fhs_vis_status(path, &before) != 0 || !before.exists) {
 		if (reason != NULL)
 			snprintf(reason, reason_len, "%s does not exist", path);
 		return -1;
@@ -324,7 +324,7 @@ msl_vis_set_browsable(const char *path, bool browsable,
 	 *
 	 * Together with devfs ignoring chflags, this closes both routes to
 	 * revealing /dev: the hidden flag cannot be cleared and the nobrowse flag
-	 * cannot be changed. See msl_visibility.h.
+	 * cannot be changed. See fhs_visibility.h.
 	 */
 	if (strcmp(before.fstype, "devfs") == 0) {
 		if (reason != NULL)
@@ -337,7 +337,7 @@ msl_vis_set_browsable(const char *path, bool browsable,
 	if (before.browsable == browsable)
 		return 0;	/* already as requested */
 
-	if (!msl_is_root()) {
+	if (!fhs_is_root()) {
 		if (reason != NULL)
 			snprintf(reason, reason_len, "changing the browse flag requires root");
 		return -1;
@@ -348,7 +348,7 @@ msl_vis_set_browsable(const char *path, bool browsable,
 	 * remounting it. That distinction matters a great deal for /dev, where an
 	 * unmount would take the system's device nodes with it.
 	 */
-	rc = msl_run(argv);
+	rc = fhs_run(argv);
 	if (rc != 0) {
 		if (reason != NULL)
 			snprintf(reason, reason_len,
@@ -356,8 +356,8 @@ msl_vis_set_browsable(const char *path, bool browsable,
 		return -1;
 	}
 
-	/* Verify, for the same reason msl_vis_set() does. */
-	if (msl_vis_status(path, &after) == 0 && after.browsable != browsable) {
+	/* Verify, for the same reason fhs_vis_set() does. */
+	if (fhs_vis_status(path, &after) == 0 && after.browsable != browsable) {
 		if (reason != NULL)
 			snprintf(reason, reason_len,
 			    "%s: the mount accepted the change and ignored it", path);
