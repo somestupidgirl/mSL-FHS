@@ -30,11 +30,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerLoginItemOnFirstLaunch()
     }
 
+    /// The status-item icon: the project's own glyph, as a template image.
+    ///
+    /// A template is tinted by macOS with the menu bar's own colour, so one
+    /// file is correct in both light and dark appearances and while the item is
+    /// highlighted - no pair of light and dark artwork to keep in step. Falls
+    /// back to an SF Symbol, then to text, if the resource is missing.
     private func setIcon() {
         guard let button = statusItem?.button else { return }
-        if let image = NSImage(systemSymbolName: "folder.badge.gearshape",
-                               accessibilityDescription: "mSL/XNU") {
+
+        let image = Bundle.main.url(forResource: "icon_menu", withExtension: "png")
+            .flatMap { NSImage(contentsOf: $0) }
+            ?? NSImage(systemSymbolName: "folder.badge.gearshape",
+                       accessibilityDescription: "mSL/XNU")
+
+        if let image {
             image.isTemplate = true
+            image.size = NSSize(width: 18, height: 18)   // menu-bar sized
             button.image = image
             button.title = ""
         } else {

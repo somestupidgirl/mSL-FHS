@@ -18,6 +18,8 @@
 	<string>__MSLVERSION__</string>
 	<key>NSPrincipalClass</key>
 	<string>MSLPref</string>
+	<key>NSPrefPaneIconFile</key>
+	<string>appicon.png</string>
 	<key>NSPrefPaneIconLabel</key>
 	<string>mSL/XNU</string>
 	<key>NSHumanReadableCopyright</key>

@@ -10,6 +10,8 @@
 	<string>com.beako.msl.gui</string>
 	<key>CFBundleExecutable</key>
 	<string>mSL</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>

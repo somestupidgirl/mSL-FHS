@@ -108,12 +108,24 @@ final class MSLPref: NSPreferencePane {
     // MARK: - Header
 
     private func makeHeader() -> NSView {
+        // The app icon itself, as the stock panes show, rather than a symbol.
         let icon = NSImageView()
-        icon.image = NSImage(systemSymbolName: "folder.badge.gearshape",
-                             accessibilityDescription: "mSL/XNU")
-        icon.symbolConfiguration = .init(pointSize: 40, weight: .regular)
-        icon.contentTintColor = .controlAccentColor
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        if let url = Bundle(for: type(of: self)).url(forResource: "appicon",
+                                                     withExtension: "png") {
+            icon.image = NSImage(contentsOf: url)
+        } else {
+            icon.image = NSImage(systemSymbolName: "folder.badge.gearshape",
+                                 accessibilityDescription: "mSL/XNU")
+        }
+        icon.wantsLayer = true
+        icon.layer?.cornerRadius = 10
+        icon.layer?.masksToBounds = true
         icon.setContentHuggingPriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 56),
+            icon.heightAnchor.constraint(equalToConstant: 56),
+        ])
 
         let title = NSTextField(labelWithString: "mSL/XNU")
         title.font = .systemFont(ofSize: 22, weight: .semibold)
