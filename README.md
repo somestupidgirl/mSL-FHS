@@ -58,7 +58,7 @@ two:
 
 | Tier | What it is | When it changes | In the toggle? |
 |------|------------|-----------------|----------------|
-| **Skeleton** | The root-level entries themselves (`/mnt`, `/media`, …), created as symlinks into the writable Data volume via `synthetic.conf` | Install time only; **requires a reboot** | No |
+| **Skeleton** | The root-level entries themselves (`/home`, `/mnt`, `/media`, …), created as symlinks into the writable Data volume via `synthetic.conf` | Install time only; **requires a reboot** | No |
 | **Contents** | What lives inside them — the per-user and per-volume symlinks, maintained by `mslxd` | Continuously, at runtime | Yes |
 
 The skeleton is inert. A `/media` symlink pointing at an empty directory is
@@ -107,14 +107,23 @@ full per-directory semantics.
 
 | Component | Provides | Populated by | Notes |
 |-----------|----------|--------------|-------|
-| `home` | `/home/<user>` → `/Users/<user>` | One symlink per local user | Requires disabling the `auto_home` automounter map |
-| `mnt` | `/mnt` | Nothing — stays empty | Correct: `/mnt` is empty on a stock Linux system |
+| `home` | `/home/<user>` → `/Users/<user>` | One symlink per local user | Also masks the `auto_home` automounter map |
+| `mnt` | `/mnt` | Nothing — the administrator mounts into it | Reported, never mounted by mSL |
 | `media` | `/media/<user>/<label>` → `/Volumes/<label>` | DiskArbitration events, live | Removable media only; filtered and user-attributed |
 
-`/mnt` being empty is not an unimplemented feature. The FHS defines it as scratch
-space for *temporary, manual* mounts (`mount /dev/sdb1 /mnt/usb`); nothing
-populates it automatically on Linux, and mapping it onto `/Volumes` would produce
-a layout no Linux system actually has.
+`/mnt` staying empty is not an unimplemented feature. The FHS defines it as
+scratch space for *temporary, manual* mounts (`mkdir /mnt/disk1 && mount
+/dev/… /mnt/disk1`); nothing populates it automatically on Linux, and mapping it
+onto `/Volumes` would produce a layout no Linux system actually has. The
+component does *report* what you have mounted there — read-only; it never mounts
+or unmounts anything.
+
+`/home` needs the automounter masked because, while the `auto_home` map is
+active, autofs owns the directory and nothing can be created in it. That has a
+consequence worth stating plainly: **the root-level `/home` is not a permanent
+part of macOS** — autofs creates it at boot from that very map. Masking the map
+therefore removes `/home` itself at the next boot, so the component declares its
+own `/home` in `synthetic.conf` alongside `/mnt` and `/media`.
 
 `/media` is the auto-populated one, and it is the component that needs real work.
 macOS puts *everything* in `/Volumes` — internal volumes, network shares, mounted
@@ -175,7 +184,7 @@ filesystem.
 
 - macOS 15 or later (Apple Silicon or Intel)
 - Administrator access for installation
-- **One reboot** before `/mnt` and `/media` appear
+- **One reboot** before the root-level directories appear
 
 No kernel extension, no Reduced Security, and no SIP changes are required for the
 layout layer. (The optional pseudo-filesystems have their own requirements.)
@@ -191,10 +200,11 @@ sudo make install   # install and start the daemon
 ```
 
 Either way, **nothing is switched on by the install.** Enabling a component
-edits system configuration — `/home` masks a line in `/etc/auto_master`,
-`/mnt` and `/media` add entries to `/etc/synthetic.conf` — and an installer
-making changes that affect login, on a machine whose setup it has not
-inspected, would be taking a decision that belongs to the person running it.
+edits system configuration — every component adds an entry to
+`/etc/synthetic.conf`, and `/home` additionally masks a line in
+`/etc/auto_master` — and an installer making changes that affect login, on a
+machine whose setup it has not inspected, would be taking a decision that
+belongs to the person running it.
 
 Turn components on in **System Settings → mSL/XNU**, or from the menu bar, or:
 
@@ -204,7 +214,17 @@ mslctl home check   # is /home safe to enable on this machine?
 sudo mslctl home enable
 ```
 
-`/home` applies immediately. `/mnt` and `/media` appear after a restart.
+All three appear after a restart: macOS creates root-level entries only at
+startup. The symlinks beneath them are built immediately, so everything is in
+place when the directories appear.
+
+To show or hide the root-level directories in the Finder:
+
+```sh
+mslctl vis                    # every node, and whether it can be changed
+sudo mslctl vis show opt
+sudo mslctl vis hide opt
+```
 
 To build a distributable installer:
 
@@ -224,28 +244,69 @@ kept at `/var/db/msl.auto_master.orig` regardless.
 
 ## Status
 
-Early. The design is settled; the implementation is not yet written.
+Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 
 | Component | Status |
 |-----------|--------|
-| `/home` | **Working** — verified on macOS 26.5.2 (arm64) |
-| `/mnt` | **Working** — needs one reboot to appear |
-| `/media` | **Working** — needs one reboot to appear |
+| `/home` | **Working** — survives reboot via its own `synthetic.conf` entry |
+| `/mnt` | **Working** — reports filesystems mounted under it |
+| `/media` | **Working** — tracks volumes live through DiskArbitration |
+| Finder visibility | **Working** — for the nodes macOS permits; see below |
 | `mslctl` | **Working** — CLI control for the layer |
-| `mslxd` | **Built, not yet exercised** — boot restore and live volume tracking |
-| Menu bar app | Planned |
-| Preference pane | Planned |
-| `/proc` detection | Planned ([procfs](https://github.com/somestupidgirl/procfs_kext) exists and is mature) |
-| `/sys` detection | Planned (`sysfs` not yet started) |
+| `mslxd` | **Working** — boot restore, live volume tracking, console-user changes |
+| Menu bar app | **Working** — per-node dropdowns |
+| Preference pane | **Working** — batched Apply |
+| Installer | **Working** — `make dmg`, with an uninstaller |
+| `/proc` detection | **Working** ([procfs](https://github.com/somestupidgirl/procfs_kext) exists and is mature) |
+| `/sys` detection | **Working** — reports "not installed" until `sysfs` exists |
+
+### Finder visibility
+
+macOS hides most root-level directories from the Finder with the `UF_HIDDEN`
+file flag. mSL/XNU can clear it — but only where the platform permits, and which
+those are is not apparent from the path. Measured, not assumed:
+
+| Nodes | Result |
+|-------|--------|
+| `/opt` `/cores` `/Volumes` | **Changeable** — firmlinked to the writable Data volume |
+| `/bin` `/etc` `/sbin` `/tmp` `/usr` `/var` | `SF_RESTRICTED` — refused by SIP |
+| `/home` and other root symlinks | Read-only — the entry itself is on the sealed root |
+| `/private` | Refused, for a reason nothing exposes |
+| `/dev` | Blocked three ways — see below |
+
+An earlier version of this file claimed root-directory unhiding was uniformly
+impossible under SIP. That was wrong: three nodes are genuinely changeable, and
+clearing `/opt`'s flag makes it *fully* visible in the Finder, not merely dimmed.
+
+The GUI shows a locked node's toggle disabled with the reason, rather than
+offering a control that cannot work. Every change is verified by re-reading the
+flag afterwards, because one filesystem accepts the call and ignores it.
+
+**`/dev` cannot be shown in the Finder by any supported means.** All three
+routes were tried:
+
+- devfs accepts `chflags` and silently ignores it, so `UF_HIDDEN` cannot be cleared
+- devfs does not implement `MNT_UPDATE`, so `mount -u` cannot clear `nobrowse`
+- SIP's rootless protection refuses a second devfs stacked over `/dev`, `EPERM`
+  even as root
+
+That leaves a kernel extension as the only path, for one cosmetic directory —
+so `/dev` visibility is deferred alongside the `sysfs` work rather than
+attempted here.
 
 ### Not planned, and why
 
-**Unhiding `/bin`, `/usr`, `/etc`, `/dev` and friends.** These directories all
-already exist on macOS with their normal UNIX contents; they are merely hidden
-from Finder by a filesystem flag on the sealed system volume, which SIP does not
-permit clearing. This is a presentation issue in one application rather than a
-namespace issue, and there is no supported way to change it. Any program,
-shell, or script already sees these paths normally.
+**Unhiding the SIP-protected and sealed directories.** `/bin`, `/etc`, `/usr`,
+`/var` and friends live on the Signed System Volume, whose seal is a
+cryptographic hash tree verified at boot. The `hidden` flag on those entries is
+part of the sealed content: there is no writable inode to change, from userspace
+or from a kernel extension, and altering it would break the seal and prevent the
+machine from booting. Only a VFS-interception layer that *synthesises* a
+rewritten view of `/` could do it — a different and much larger undertaking, and
+one that belongs with the pseudo-filesystem work rather than here.
+
+Any program, shell, or script already sees these paths normally; this affects
+one application's presentation.
 
 ## License
 

@@ -67,4 +67,25 @@ int msl_skeleton_remove(const char *name);
 /* True when `name` is declared but not yet present at / - a reboot is pending. */
 bool msl_skeleton_reboot_pending(const char *name);
 
+/* ---------------------------------------------------------------------------
+ * Explicit-target variants.
+ *
+ * The functions above assume an entry points at MSL_DATA_ROOT/<name>, which is
+ * right for the components that own their contents. Nodes that expose content
+ * macOS already has - /root is really /var/root, /run is really /var/run -
+ * point elsewhere, and use these.
+ *
+ * `create_target` says whether the target is ours to create. It must be false
+ * for an existing system directory: those belong to macOS, already exist, and
+ * carry their own ownership and modes. A declaration whose target is missing is
+ * refused rather than left to dangle.
+ * ------------------------------------------------------------------------- */
+
+int  msl_skeleton_status_at(const char *name, const char *target,
+                            struct msl_skeleton_status *st);
+int  msl_skeleton_add_at(const char *name, const char *target,
+                         bool create_target);
+int  msl_skeleton_remove_at(const char *name, const char *target);
+bool msl_skeleton_reboot_pending_at(const char *name, const char *target);
+
 #endif /* MSL_SKELETON_H */

@@ -41,6 +41,7 @@ MSLCTL_SRCS := $(SRC)/common/msl_util.c \
                $(SRC)/skeleton/msl_skeleton.c \
                $(SRC)/home/msl_home.c \
                $(SRC)/mnt/msl_mnt.c \
+               $(SRC)/simple/msl_simple.c \
                $(SRC)/media/msl_media.c \
                $(SRC)/tools/mslctl.c
 MSLCTL      := $(OUT)/mslctl
@@ -116,6 +117,9 @@ check: | $(OUT)
 	$(CC) $(CFLAGS) -I$(SRC)/mnt \
 	    -o $(OUT)/test_mnt $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
 	    tests/test_mnt.c
+	$(CC) $(CFLAGS) -I$(SRC)/simple \
+	    -o $(OUT)/test_simple $(SRC)/common/msl_util.c $(SRC)/skeleton/msl_skeleton.c \
+	    tests/test_simple.c
 	@echo "==> auto_master rewrite tests"
 	@$(OUT)/test_auto_master
 	@echo
@@ -130,6 +134,9 @@ check: | $(OUT)
 	@echo
 	@echo "==> /mnt mount-matcher tests"
 	@$(OUT)/test_mnt
+	@echo
+	@echo "==> skeleton-only node tests"
+	@$(OUT)/test_simple
 
 # ---------------------------------------------------------------------------
 # Distribution: a double-clickable installer (.pkg) and disk image (.dmg).
@@ -268,7 +275,8 @@ uninstall: require-root
 	rm -f $(DAEMON_DIR)/$(DAEMON_PLIST)
 	rm -f $(SBIN_DIR)/mslctl $(SBIN_DIR)/mslxd
 	rm -rf $(APP_DIR)/mSL.app $(PREFPANE_DIR)/mSL.prefPane
-	rm -f /var/db/msl.home /var/db/msl.mnt /var/db/msl.media
+	rm -f /var/db/msl.home /var/db/msl.mnt /var/db/msl.media \
+	      /var/db/msl.root /var/db/msl.run /var/db/msl.srv
 	@echo "mSL: uninstalled. /var/db/msl.auto_master.orig kept as a backup."
 
 require-root:

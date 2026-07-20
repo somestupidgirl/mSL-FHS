@@ -12,16 +12,19 @@ former wins — including when that means a directory stays empty.
 
 | Path | Linux semantics | macOS source | Mechanism | Live toggle | Status |
 |------|-----------------|--------------|-----------|-------------|--------|
-| `/home/<user>` | Per-user home directories | `/Users/<user>` | Symlink farm; `auto_home` disabled | Yes | **Working** |
-| `/mnt` | Empty; scratch for manual mounts | — | Skeleton symlink only | Yes | Planned |
-| `/media/<user>/<label>` | Removable media, per session | `/Volumes/<label>`, filtered | Symlink farm from DiskArbitration | Yes | Planned |
-| `/proc` | Process pseudo-filesystem | — | External kext; **detected only** | n/a | Planned (detection) |
-| `/sys` | Kernel object pseudo-filesystem | — | External; **detected only** | n/a | Not started |
+| `/home/<user>` | Per-user home directories | `/Users/<user>` | Skeleton symlink + farm; `auto_home` masked | Yes | **Working** |
+| `/mnt` | Scratch for manual mounts | — | Skeleton symlink; mounts reported | Yes | **Working** |
+| `/media/<user>/<label>` | Removable media, per session | `/Volumes/<label>`, filtered | Symlink farm from DiskArbitration | Yes | **Working** |
+| `/proc` | Process pseudo-filesystem | — | External kext; **detected only** | n/a | **Working** (detection) |
+| `/sys` | Kernel object pseudo-filesystem | — | External; **detected only** | n/a | **Working** (detection) |
 | `/root` | Superuser home | `/var/root` | Skeleton symlink | No (skeleton) | Future |
 | `/run` | Runtime state | `/var/run` | Skeleton symlink | No (skeleton) | Future |
 | `/srv` | Service data | — | Skeleton empty symlink target | No (skeleton) | Future |
-| `/opt` | Optional packages | `/opt` | **Already exists** | — | Nothing to do |
-| `/bin` `/sbin` `/usr` `/etc` `/dev` `/tmp` `/var` | Standard UNIX | Themselves | **Already correct** | — | Nothing to do |
+| `/opt` | Optional packages | `/opt` | **Already exists**; visibility changeable | — | Nothing to do |
+| `/bin` `/sbin` `/usr` `/etc` `/dev` `/tmp` `/var` | Standard UNIX | Themselves | **Already correct**; visibility locked | — | Nothing to do |
+
+Finder visibility is a separate axis from the layout, and applies to every node
+above. See [Finder visibility](#finder-visibility).
 
 "Live toggle" refers to the *contents* tier. Every skeleton entry — the symlink
 at `/` itself — is created by `/etc/synthetic.conf` at boot and cannot be added
@@ -47,20 +50,24 @@ Because the first form is read-only, mSL/XNU uses the second exclusively,
 pointing each entry at the writable Data volume:
 
 ```
+home	/System/Volumes/Data/home
 mnt	/System/Volumes/Data/mnt
 media	/System/Volumes/Data/media
 ```
 
-This is precisely the pattern macOS itself uses for `/home`, which ships as a
-symlink to `/System/Volumes/Data/home`. The targets are ordinary writable
-directories, so the daemon can maintain their contents with nothing more than
-`symlink(2)` and `unlink(2)`.
+This mirrors what macOS itself does for `/home` — which is a symlink to
+`/System/Volumes/Data/home`, created at boot by autofs rather than shipped in
+the system image. The targets are ordinary writable directories, so the daemon
+can maintain their contents with nothing more than `symlink(2)` and
+`unlink(2)`.
 
 Constraints worth knowing:
 
 - An entry **cannot shadow a path that already exists** at `/`. This is why
-  `/home` needs no skeleton entry (macOS provides it) and `/opt` needs none
-  either (it already exists on the system).
+  `/opt` needs no skeleton entry — it is genuinely part of the system image.
+  `/home` is the instructive case: it *looks* like it already exists, but is
+  created each boot by autofs from a map this layer masks, so it does need an
+  entry of its own. See [`/home`](#home).
 - The target of a symlink entry is not created for you. The installer must
   create the Data-volume directories before the reboot that activates them.
 - The file is consumed at boot only. There is no daemon, no reload, and no
@@ -83,17 +90,29 @@ On a stock system this map resolves nothing locally; it exists to support
 NFS-mounted network homes. While it is active it also *owns* the directory, so
 symlinks cannot be created there.
 
-**Mechanism.** Disable the map, then maintain a symlink farm in the directory it
-was occupying:
+**Mechanism.** Declare our own `/home`, mask the map, then maintain a symlink
+farm in the directory it was occupying:
 
-1. Comment out the `/home` line in `/etc/auto_master` (backing up the original)
-2. `automount -vc` to flush the automounter, unmounting `/home`
-3. Create `/System/Volumes/Data/home/<user>` → `/Users/<user>` per local user
+1. Add `home` → `/System/Volumes/Data/home` to `/etc/synthetic.conf`
+2. Comment out the `/home` line in `/etc/auto_master` (backing up the original)
+3. `automount -vc` to flush the automounter, releasing the directory
+4. Create `/System/Volumes/Data/home/<user>` → `/Users/<user>` per local user
 
-`/System/Volumes/Data/home` is on the writable Data volume, so step 3 needs no
-special privilege beyond root, and the existing `/home` symlink means no
-skeleton entry is required. **`/home` is therefore the one component that needs
-no reboot at all**, which is why it is the first implementation target.
+**Step 1 is not optional, and an earlier design omitted it.** The root-level
+`/home` is *not* a permanent part of macOS: autofs creates it at boot from the
+same `auto_master` line that step 2 masks. Masking the map therefore removes
+`/home` itself at the next boot, leaving the farm below it with nothing pointing
+at it — the farm survives intact, and every path through it breaks.
+
+That failure is invisible for exactly one boot, which is what made it
+misleading: the entry autofs had already created stays for the rest of the
+session, so enabling appears to work and only the next start reveals otherwise.
+An `EROFS` from `chflags /home` was read at the time as proof the symlink was
+baked into the sealed system volume and therefore permanent; it means only that
+the root directory is read-only.
+
+So `/home` needs a reboot like `/mnt` and `/media`, and is **not** an exception
+to the skeleton rule.
 
 **Which users.** Local, human accounts only — those with a real home under
 `/Users`, a valid login shell, and a UID at or above 500. macOS carries a large
@@ -115,11 +134,16 @@ Confirmed on macOS 26.5.2, Apple Silicon:
 
 - **`automount -vc` releases the mount synchronously.** It reports
   `/System/Volumes/Data/home unmounted` and the directory is immediately
-  writable, so enable completes in one pass with no reboot. The implementation
-  still detects and reports the case where the mount is not released, rather
-  than emitting a symlink error per account.
+  writable, so enabling completes in one pass. The implementation still detects
+  and reports the case where the mount is not released, rather than emitting a
+  symlink error per account.
 - **Paths resolve, and writes land in the real home.** `/home/<user>/…` opens
   the same files as `/Users/<user>/…`, as it must, being one directory.
+- **`/home` survives a reboot.** Confirmed by the entry being recreated at boot
+  with a timestamp later than the enable that declared it, with no autofs mount
+  present — so `apfs_boot_util` made it from `synthetic.conf`, and the ordering
+  holds: `synthetic.conf` is processed before autofs, and the masked map does
+  not contend for the name.
 
 Two consequences of using symlinks rather than a bind mount, both expected and
 neither worth engineering around:
@@ -159,6 +183,31 @@ full of automatically-appearing mounted volumes, which is not what `/mnt` is on
 any Linux system, and would additionally duplicate `/media`'s job while getting
 `/media`'s semantics wrong. An empty `/mnt` is the faithful result, and it makes
 manual `mount` commands copied from Linux documentation work as written.
+
+### Reporting what is mounted
+
+Empty by default does not mean empty forever: the point of `/mnt` is that an
+administrator mounts things into it. The component reports whatever is there, so
+the interface can show it instead of claiming the directory is empty:
+
+```
+disk1 mounted at /mnt/disk1 hfs
+```
+
+with "No mount points detected" when there is nothing. This is **read-only** —
+mSL never mounts or unmounts anything under `/mnt`, and never creates the mount
+point directories. That remains the administrator's job, exactly as on Linux.
+
+Two details decide whether the detection is correct:
+
+- **Both spellings must be matched.** `/mnt` is a symlink to the Data volume,
+  and the kernel records a mount under whichever path it was requested with.
+  Mounting at `/mnt/disk1` is recorded as `/System/Volumes/Data/mnt/disk1` —
+  confirmed on a real mount — so matching only the literal `/mnt/` prefix would
+  report nothing at all. Results are normalised back to `/mnt/<name>`.
+- **Only direct children count.** A nested `/mnt/a/b` is not a `/mnt` mount
+  point in the sense an administrator means, and lookalike prefixes (`/mntfoo`,
+  `/mnt2/disk`) must not match a naive string comparison.
 
 ## `/media`
 
@@ -271,6 +320,74 @@ Where no console user exists — mounts during boot, or over SSH with nobody
 logged in — the volume is attributed to the console user when one next appears,
 rather than being dropped.
 
+## Finder visibility
+
+A separate axis from the layout: not *which* directories exist, but which of
+them the Finder shows. It applies to every root-level node, whether macOS
+provides it or this layer does.
+
+macOS hides most root entries with the **`UF_HIDDEN`** file flag. Cmd-Shift-.
+reveals flagged items but draws them dimmed; clearing the flag makes an entry
+ordinary. `/.hidden`, the mechanism older releases used, does not exist on
+current macOS — the flag is the whole story. There is deliberately no
+system-level counterpart: `<sys/stat.h>` states outright that there is no
+`SF_HIDDEN` bit.
+
+### What can actually be changed
+
+Whether the flag can be cleared depends on where the *directory entry* lives,
+which the path does not reveal. Measured on macOS 26.5.2, not inferred:
+
+| Node | Result | Why |
+|------|--------|-----|
+| `/opt` `/cores` `/Volumes` | **Changeable** | firmlinked to the writable Data volume |
+| `/home` and other root symlinks | `EROFS` | the entry's parent is the sealed root |
+| `/private` | `EPERM` | no observable cause; see below |
+| `/bin` `/etc` `/sbin` `/tmp` `/usr` `/var` | `EPERM` | `SF_RESTRICTED` — SIP |
+| `/dev` | silently ignored | devfs accepts the call and does nothing |
+
+Clearing `/opt`'s flag makes it **fully** visible in the Finder, not merely
+dimmed — confirmed visually.
+
+The classification exists so the interface can disable a toggle that cannot
+work and say why, rather than offering a control that does nothing. It is a
+display hint, not the safety mechanism: **every change is verified by re-reading
+the flag afterwards**, so a filesystem that accepts a change and ignores it is
+reported as a failure rather than as success.
+
+`/private` is recorded from measurement rather than derived. It carries no
+`SF_RESTRICTED` flag and no `com.apple.rootless` attribute, and firmlinks to a
+writable volume — nothing observable marks it as protected, yet the change is
+refused. Whatever enforces that is not introspectable from userspace.
+
+### `/dev` cannot be shown
+
+`/dev` is hidden twice over, and both mechanisms are closed. All three routes
+were tried on a real system:
+
+| Route | Result |
+|-------|--------|
+| `chflags` to clear `UF_HIDDEN` | accepted and **silently ignored** by devfs |
+| `mount -u` to clear `nobrowse` | `MNT_UPDATE` not supported by devfs |
+| stack a second devfs over `/dev` | `EPERM` — SIP rootless mount protection, even as root |
+
+The first is the reason every mutation verifies afterwards: `chflags` on `/dev`
+returns success and changes nothing, so code trusting the return value would
+report `/dev` as revealed while the Finder went on hiding it.
+
+There is therefore no supported way to show `/dev` in the Finder. A kernel
+extension is the only remaining path, for one cosmetic directory, so it is
+deferred alongside the `sysfs` work rather than attempted here.
+
+### Ownership, not root
+
+`UF_HIDDEN` is a *user* flag: its owner may set and clear it unprivileged. Root
+is needed only because the root-level entries belong to root. The check is
+therefore on ownership rather than on being root, which states the real
+requirement and gives a better message than the bare `EPERM` the syscall would
+produce — and it is what allows the whole set-and-verify cycle to be tested
+without privilege, on scratch files the test process owns.
+
 ## Pseudo-filesystems (detected, not managed)
 
 `/proc` and `/sys` are dynamic: their contents are generated per read, from live
@@ -301,11 +418,12 @@ Several are themselves symlinks into `/private` (`/etc` → `/private/etc`,
 `/tmp` → `/private/tmp`, `/var` → `/private/var`), which is invisible to
 everything that matters — programs resolve them transparently.
 
-They are hidden from Finder by a filesystem flag on the sealed system volume,
-which SIP does not permit clearing. This affects exactly one application's
-presentation and nothing else: every shell, script, and program already sees
-these paths normally. There is no supported way to change it, so mSL/XNU does
-not attempt to.
+Most are hidden from the Finder, and whether that can be changed varies per
+node — `/opt` can be shown, `/bin` and the rest cannot. See
+[Finder visibility](#finder-visibility) for the measurements and the reasons.
+
+Either way this affects exactly one application's presentation and nothing
+else: every shell, script, and program already sees these paths normally.
 
 ## Future entries
 

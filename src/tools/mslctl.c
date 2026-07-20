@@ -18,6 +18,7 @@
 #include "msl_home.h"
 #include "msl_media.h"
 #include "msl_mnt.h"
+#include "msl_simple.h"
 #include "msl_visibility.h"
 
 #include <stdio.h>
@@ -151,6 +152,21 @@ porcelain(void)
 		printf("media.stale=%d\n", media.stale);
 	}
 
+	for (size_t i = 0; i < msl_simple_node_count; i++) {
+		const struct msl_simple_def *def = &msl_simple_nodes[i];
+		struct msl_simple_status ss;
+
+		if (msl_simple_status(def, &ss) != 0)
+			continue;
+
+		printf("%s.enabled=%d\n", def->name, ss.enabled);
+		printf("%s.declared=%d\n", def->name, ss.skel.declared);
+		printf("%s.conflicting=%d\n", def->name, ss.skel.conflicting);
+		printf("%s.active=%d\n", def->name, ss.skel.active);
+		printf("%s.reboot_pending=%d\n", def->name, ss.reboot_pending);
+		printf("%s.target_missing=%d\n", def->name, ss.target_missing);
+	}
+
 	msl_detect_procfs(&proc);
 	msl_detect_sysfs(&sys);
 	printf("proc.installed=%d\n", proc.installed);
@@ -189,6 +205,62 @@ porcelain(void)
 	}
 
 	return 0;
+}
+
+/* One of the skeleton-only nodes: /root, /run, /srv. */
+static int
+simple_status(const struct msl_simple_def *def)
+{
+	struct msl_simple_status st;
+
+	if (msl_simple_status(def, &st) != 0) {
+		msl_err("cannot read /%s status", def->name);
+		return 1;
+	}
+
+	/*
+	 * A missing target is only a fault when we were relying on it being
+	 * there: for /srv, which we create ourselves, "missing while disabled" is
+	 * simply the state before it is turned on.
+	 */
+	bool target_fault = st.target_missing &&
+	    (!def->creates_target || st.enabled);
+
+	printf("/%s\n", def->name);
+	printf("  state        %s\n", st.enabled ? "enabled" : "disabled");
+	printf("  target       %s%s\n", def->target,
+	    target_fault ? " (missing)" : "");
+	printf("  declared     %s\n",
+	    st.skel.declared ? "yes, in /etc/synthetic.conf" : "no");
+	printf("  present      %s\n", st.skel.active ? "yes" : "no");
+
+	if (st.skel.conflicting)
+		printf("\n  note: /etc/synthetic.conf declares '%s' but not as ours.\n"
+		       "        mSL will not modify it.\n", def->name);
+	else if (target_fault)
+		printf("\n  note: the target %s does not exist, so /%s would dangle.\n",
+		       def->target, def->name);
+	else if (st.reboot_pending)
+		printf("\n  note: declared, but /%s appears only after a reboot.\n",
+		       def->name);
+
+	return 0;
+}
+
+static int
+simple_command(const struct msl_simple_def *def, const char *verb)
+{
+	if (verb == NULL || strcmp(verb, "status") == 0)
+		return simple_status(def);
+
+	if (strcmp(verb, "enable") == 0)
+		return msl_simple_enable(def) == 0 ? 0 : 1;
+
+	if (strcmp(verb, "disable") == 0)
+		return msl_simple_disable(def) == 0 ? 0 : 1;
+
+	msl_err("unknown command: %s %s", def->name, verb);
+	return 2;
 }
 
 static int
@@ -467,6 +539,9 @@ usage(void)
 	    "  home     Linux-style /home/<user> paths for local accounts\n"
 	    "  mnt      /mnt, an empty directory (as on Linux)\n"
 	    "  media    /media/<user>/<label> for removable volumes\n"
+	    "  root     /root -> /var/root, the superuser's home\n"
+	    "  run      /run -> /var/run, runtime state\n"
+	    "  srv      /srv, empty (as on Linux)\n"
 	    "\n"
 	    "commands:\n"
 	    "  status   show the current state (default)\n"
@@ -509,6 +584,12 @@ main(int argc, char **argv)
 		if (media_status() != 0)
 			rc = 1;
 
+		for (size_t i = 0; i < msl_simple_node_count; i++) {
+			printf("\n");
+			if (simple_status(&msl_simple_nodes[i]) != 0)
+				rc = 1;
+		}
+
 		msl_detect_procfs(&proc);
 		msl_detect_sysfs(&sys);
 		printf("\npseudo-filesystems (managed by their own projects)\n");
@@ -530,6 +611,12 @@ main(int argc, char **argv)
 
 	if (strcmp(argv[1], "vis") == 0)
 		return vis_command(argc, argv);
+
+	{
+		const struct msl_simple_def *def = msl_simple_find(argv[1]);
+		if (def != NULL)
+			return simple_command(def, argc > 2 ? argv[2] : NULL);
+	}
 
 	msl_err("unknown component: %s", argv[1]);
 	usage();

@@ -57,7 +57,12 @@ valid_name(const char *name)
 	return true;
 }
 
-/* The Data-volume path a given entry points at. */
+/*
+ * The default target for an entry: a directory of the same name on the writable
+ * Data volume. Nodes whose content already exists elsewhere on the system -
+ * /root and /run, which are really /var/root and /var/run - pass their target
+ * explicitly to the _at() functions instead.
+ */
 static void
 target_for(const char *name, char *buf, size_t bufsz)
 {
@@ -110,7 +115,8 @@ parse_line(char *line, char **name, char **target)
 /* ------------------------------------------------------------------------- */
 
 int
-msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
+msl_skeleton_status_at(const char *name, const char *target,
+    struct msl_skeleton_status *st)
 {
 	char *text, *line, *next;
 	char want[PATH_MAX], root_path[PATH_MAX];
@@ -123,7 +129,7 @@ msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
 		return -1;
 	}
 
-	target_for(name, want, sizeof(want));
+	snprintf(want, sizeof(want), "%s", target);
 
 	/* Is it declared, and pointing where we expect? */
 	text = msl_slurp(SYNTHETIC_CONF, NULL);
@@ -171,7 +177,7 @@ msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
 }
 
 int
-msl_skeleton_add(const char *name)
+msl_skeleton_add_at(const char *name, const char *target, bool create_target)
 {
 	struct msl_skeleton_status st;
 	char want[PATH_MAX], line[PATH_MAX];
@@ -181,12 +187,12 @@ msl_skeleton_add(const char *name)
 	size_t outsz;
 	int rc = -1;
 
-	if (msl_skeleton_status(name, &st) != 0) {
+	if (msl_skeleton_status_at(name, target, &st) != 0) {
 		msl_err("invalid skeleton name: %s", name ? name : "(null)");
 		return -1;
 	}
 
-	target_for(name, want, sizeof(want));
+	snprintf(want, sizeof(want), "%s", target);
 
 	if (st.declared && st.conflicting) {
 		msl_err("%s already declares '%s'%s%s - refusing to change it",
@@ -197,15 +203,26 @@ msl_skeleton_add(const char *name)
 	}
 
 	/*
-	 * Create the target first. If the reboot happens before this exists, the
-	 * root symlink would dangle - harmless, but confusing to anyone looking.
+	 * Create the target first, when it is ours to create. If the reboot
+	 * happens before it exists, the root symlink would dangle - harmless, but
+	 * confusing to anyone looking.
+	 *
+	 * Nodes pointing at existing system paths (/var/root, /var/run) pass
+	 * create_target = false: those directories are macOS's, already present,
+	 * and carry their own ownership and modes.
 	 */
-	if (mkdir(want, 0755) != 0 && errno != EEXIST) {
-		msl_err("cannot create %s: %s", want, strerror(errno));
+	if (create_target) {
+		if (mkdir(want, 0755) != 0 && errno != EEXIST) {
+			msl_err("cannot create %s: %s", want, strerror(errno));
+			return -1;
+		}
+		if (msl_is_root() && chown(want, 0, 0) != 0)
+			msl_err("warning: cannot chown %s: %s", want, strerror(errno));
+	} else if (access(want, F_OK) != 0) {
+		msl_err("cannot declare /%s: its target %s does not exist",
+		    name, want);
 		return -1;
 	}
-	if (msl_is_root() && chown(want, 0, 0) != 0)
-		msl_err("warning: cannot chown %s: %s", want, strerror(errno));
 
 	if (st.declared)
 		return 0;	/* already correct; target now ensured */
@@ -243,7 +260,7 @@ done:
 }
 
 int
-msl_skeleton_remove(const char *name)
+msl_skeleton_remove_at(const char *name, const char *target)
 {
 	char *text, *out, *line, *next;
 	char want[PATH_MAX];
@@ -256,7 +273,7 @@ msl_skeleton_remove(const char *name)
 		return -1;
 	}
 
-	target_for(name, want, sizeof(want));
+	snprintf(want, sizeof(want), "%s", target);
 
 	text = msl_slurp(SYNTHETIC_CONF, &len);
 	if (text == NULL)
@@ -324,12 +341,72 @@ done:
 }
 
 bool
-msl_skeleton_reboot_pending(const char *name)
+msl_skeleton_reboot_pending_at(const char *name, const char *target)
 {
 	struct msl_skeleton_status st;
 
-	if (msl_skeleton_status(name, &st) != 0)
+	if (msl_skeleton_status_at(name, target, &st) != 0)
 		return false;
 
 	return st.declared && !st.conflicting && !st.active;
+}
+
+/* ---------------------------------------------------------------------------
+ * Name-only wrappers, for the components whose target is the Data-volume
+ * directory of the same name.
+ * ------------------------------------------------------------------------- */
+
+int
+msl_skeleton_status(const char *name, struct msl_skeleton_status *st)
+{
+	char target[PATH_MAX];
+
+	if (!valid_name(name)) {
+		errno = EINVAL;
+		memset(st, 0, sizeof(*st));
+		return -1;
+	}
+
+	target_for(name, target, sizeof(target));
+	return msl_skeleton_status_at(name, target, st);
+}
+
+int
+msl_skeleton_add(const char *name)
+{
+	char target[PATH_MAX];
+
+	if (!valid_name(name)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	target_for(name, target, sizeof(target));
+	return msl_skeleton_add_at(name, target, true);
+}
+
+int
+msl_skeleton_remove(const char *name)
+{
+	char target[PATH_MAX];
+
+	if (!valid_name(name)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	target_for(name, target, sizeof(target));
+	return msl_skeleton_remove_at(name, target);
+}
+
+bool
+msl_skeleton_reboot_pending(const char *name)
+{
+	char target[PATH_MAX];
+
+	if (!valid_name(name))
+		return false;
+
+	target_for(name, target, sizeof(target));
+	return msl_skeleton_reboot_pending_at(name, target);
 }
