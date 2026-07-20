@@ -10,27 +10,27 @@ One module of **mSL/XNU**, a modular macOS Subsystem for Linux.
 
 ## The larger project
 
-mSL/XNU — *macOS Subsystem for Linux / X is Now UNIX* — aims at **native,
-seamless execution of Linux ELF binaries on macOS**: not in a container and not
-in a virtual machine, but as ordinary processes on the running system.
+mSL/XNU — *macOS Subsystem for Linux / X is Now UNIX* — aims at **native, seamless
+execution of Linux ELF binaries on macOS**: not in a container and not in a virtual
+machine, but as ordinary processes on the running system.
 
-Reaching that needs several independent pieces, which is why the project is
-modular rather than one monolith. Each is useful on its own, and each can be
-installed, replaced or omitted:
+Reaching that needs several independent pieces, which is why the project is modular
+rather than one monolith. Each is useful on its own, and each can be installed,
+replaced or omitted:
 
 | Piece | What it does | Where |
 |-------|--------------|-------|
-| **Filesystem Hierarchy Standard** | The Linux filesystem layout, natively | **this repository** |
+| **Filesystem Hierarchy Standard** | The Linux filesystem layout, natively | [mSL/FHS](https://github.com/somestupidgirl/mSL-FHS) |
 | **Syscall translation** | Linux system calls onto Darwin's, over `Hypervisor.framework` | based on [Noah](https://github.com/ktemkin/noah) |
-| **Image activator** | Recognises and loads ELF binaries — Linux's `binfmt_misc` | [imgact_linux](https://github.com/gheorghe-crihan/imgact_linux), needing an update; [libiosexec](https://github.com/ProcursusTeam/libiosexec) may help |
-| **procfs** | `/proc`, as a real filesystem | [mSL/ProcFS](https://github.com/somestupidgirl/procfs_kext) |
+| **Image activator** | Recognises and loads ELF binaries — Linux's `binfmt_misc` | based on [imgact_linux](https://github.com/gheorghe-crihan/imgact_linux) or similar |
+| **procfs** | `/proc`, as a real filesystem |  **this repository**  |
 | **sysfs** | `/sys`, likewise | not yet started |
 | **devfs** | `/dev` — already part of macOS | XNU |
 
 Targeting Apple Silicon natively makes [Asahi Linux](https://asahilinux.org/)
 the distribution of choice, since it is the one already built for this hardware.
 
-**This repository is the filesystem-layout piece**, and it is largely done. The
+**This repository is the ProcFS piece**, and it is largely done. The
 rest of this document describes it.
 
 ## What is mSL/FHS?
