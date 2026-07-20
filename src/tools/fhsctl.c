@@ -3,7 +3,7 @@
  *
  * fhsctl.c
  *
- * Command-line control for the mSL/XNU layout layer. This is the mechanism the
+ * Command-line control for the mSL/FHS layout layer. This is the mechanism the
  * daemon and GUI will drive; having it as a tool first means every component
  * can be exercised and verified before either of them exists.
  *

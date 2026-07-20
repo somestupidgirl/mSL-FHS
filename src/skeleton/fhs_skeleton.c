@@ -9,7 +9,7 @@
  * The file is shared: procfs declares its own `proc` entry here, and a user may
  * have added entries by hand. Every rewrite below therefore preserves lines it
  * does not recognise, and removal only ever drops an entry that points exactly
- * where mSL/XNU would have pointed it.
+ * where mSL/FHS would have pointed it.
  *
  * Format, per synthetic.conf(5): one entry per line, fields separated by a
  * single tab. A lone name creates an empty directory; a name and an absolute

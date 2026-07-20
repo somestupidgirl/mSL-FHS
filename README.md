@@ -3,8 +3,35 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey)](#requirements)
 
-**macOS Subsystem for Linux / X is Now UNIX** — a filesystem-layout compatibility
-layer that presents macOS through a Linux-shaped namespace.
+**macOS Subsystem for Linux / Filesystem Hierarchy Standard** — a native
+implementation of the Linux filesystem layout on macOS.
+
+One module of **mSL/XNU**, a modular macOS Subsystem for Linux.
+
+## The larger project
+
+mSL/XNU — *macOS Subsystem for Linux / X is Now UNIX* — aims at **native,
+seamless execution of Linux ELF binaries on macOS**: not in a container and not
+in a virtual machine, but as ordinary processes on the running system.
+
+Reaching that needs several independent pieces, which is why the project is
+modular rather than one monolith. Each is useful on its own, and each can be
+installed, replaced or omitted:
+
+| Piece | What it does | Where |
+|-------|--------------|-------|
+| **Filesystem Hierarchy Standard** | The Linux filesystem layout, natively | **this repository** |
+| **Syscall translation** | Linux system calls onto Darwin's, over `Hypervisor.framework` | based on [Noah](https://github.com/ktemkin/noah) |
+| **Image activator** | Recognises and loads ELF binaries — Linux's `binfmt_misc` | [imgact_linux](https://github.com/gheorghe-crihan/imgact_linux), needing an update; [libiosexec](https://github.com/ProcursusTeam/libiosexec) may help |
+| **procfs** | `/proc`, as a real filesystem | [mSL/ProcFS](https://github.com/somestupidgirl/procfs_kext) |
+| **sysfs** | `/sys`, likewise | not yet started |
+| **devfs** | `/dev` — already part of macOS | XNU |
+
+Targeting Apple Silicon natively makes [Asahi Linux](https://asahilinux.org/)
+the distribution of choice, since it is the one already built for this hardware.
+
+**This repository is the filesystem-layout piece**, and it is largely done. The
+rest of this document describes it.
 
 ## What is mSL/FHS?
 
@@ -18,20 +45,22 @@ mSL/FHS closes that gap at the namespace level. It is **not** a container, an
 emulator, or a virtual machine: there is no second kernel and no translation
 layer. The processes are macOS processes, the filesystems are macOS filesystems,
 and the kernel is XNU. Only the *shape* of the namespace changes, so that a
-program (or a person) that expects the Filesystem Hierarchy Standard finds what
-it is looking for.
+program — or a person — expecting the Filesystem Hierarchy Standard finds what it
+is looking for.
 
-The project is deliberately split into two halves that can be used
-independently:
+That modesty is the point. A Linux binary needs its paths to resolve before any
+of the harder machinery matters, and paths are the one part of the problem that
+needs no kernel code at all: macOS already has the content, under other names.
+This module supplies the names, and nothing more.
 
-- **The layout layer** (this repository) — the static shape of the tree. Home
-  directories, mount points, removable media. Built out of symlinks maintained
-  by a small daemon, with no kernel code at all.
-- **The pseudo-filesystems** (separate projects) — the synthetic, dynamic parts
-  of a Linux tree, which have to be real filesystems because their contents are
-  generated on demand:
-  [procfs](https://github.com/somestupidgirl/procfs_kext) for `/proc`, and a
-  planned `sysfs` for `/sys`.
+Within it, the work splits again:
+
+- **The layout** (this repository) — the static shape of the tree. Home
+  directories, mount points, removable media, the boot artifacts. Built out of
+  symlinks maintained by a small daemon, with no kernel code.
+- **The pseudo-filesystems** (separate modules) — the synthetic, dynamic parts
+  of a Linux tree, which must be real filesystems because their contents are
+  generated on demand: `/proc`, `/sys`, and macOS's own `/dev`.
 
 mSL/FHS **detects and reports** the status of the pseudo-filesystems, but never
 mounts, unmounts, or configures them — each keeps its own installer and its own
@@ -114,6 +143,7 @@ full per-directory semantics.
 | `home` | `/home/<user>` → `/Users/<user>` | One symlink per local user | Also masks the `auto_home` automounter map |
 | `mnt` | `/mnt` | Nothing — the administrator mounts into it | Reported, never mounted by mSL |
 | `media` | `/media/<user>/<label>` → `/Volumes/<label>` | DiskArbitration events, live | Removable media only; filtered and user-attributed |
+| `boot` | `/boot` | Symlinks to the kernel, bootloader and kernel collections | Names them; copies and modifies nothing |
 | `root` | `/root` → `/var/root` | — | Names existing content; creates nothing |
 | `run` | `/run` → `/var/run` | — | Names existing content; creates nothing |
 | `srv` | `/srv` | Nothing — stays empty | Empty on most Linux systems too |
@@ -124,6 +154,13 @@ already keeps the superuser's home at `/var/root` and runtime state at
 gives that content the name Linux uses and creates no second copy — so there is
 nothing to synchronise and nothing that can drift. `ls /run` lists the pid files
 and sockets the system is actually using.
+
+`/boot` gathers what this machine actually boots — the per-SoC kernel, the
+bootloader, the kernel collections — under the names Linux uses, by symlink.
+Nothing is copied or modified. It is also the one component built with the
+larger project in view: it is a directory this layer owns on the writable Data
+volume rather than a symlink onto a read-only system path, so a real Linux
+kernel image can sit beside the Darwin ones later without rearranging anything.
 
 `/mnt` staying empty is not an unimplemented feature. The FHS defines it as
 scratch space for *temporary, manual* mounts (`mkdir /mnt/disk1 && mount
@@ -265,6 +302,7 @@ Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 | `/home` | **Working** — survives reboot via its own `synthetic.conf` entry |
 | `/mnt` | **Working** — reports filesystems mounted under it |
 | `/media` | **Working** — tracks volumes live through DiskArbitration |
+| `/boot` | **Working** — names this machine's kernel and bootloader |
 | `/root` `/run` | **Working** — name the existing `/var/root` and `/var/run` |
 | `/srv` | **Working** — empty, as on Linux |
 | Finder visibility | **Working** — for the nodes macOS permits; see below |
@@ -272,7 +310,7 @@ Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 | `fhsxd` | **Working** — boot restore, live volume tracking, console-user changes |
 | Menu bar app | **Working** — per-node dropdowns |
 | Preference pane | **Working** — batched Apply |
-| Installer | **Working** — `make dmg`, with an uninstaller |
+| Installer | **Working** — built by `make`, with an uninstaller app |
 | `/proc` detection | **Working** ([procfs](https://github.com/somestupidgirl/procfs_kext) exists and is mature) |
 | `/sys` detection | **Working** — reports "not installed" until `sysfs` exists |
 

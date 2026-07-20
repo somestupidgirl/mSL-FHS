@@ -7,7 +7,7 @@
  * tree - /proc (procfs) and /sys (sysfs).
  *
  * These are separate projects with their own kernel extensions, installers and
- * toggles. mSL/XNU reports their state and never changes it: two applications
+ * toggles. mSL/FHS reports their state and never changes it: two applications
  * independently mounting and unmounting the same path would race, and a status
  * display that contradicts the actual system is worse than none.
  *

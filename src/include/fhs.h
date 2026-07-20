@@ -3,7 +3,7 @@
  *
  * fhs.h
  *
- * Shared declarations for the mSL/XNU layout layer: logging, persisted
+ * Shared declarations for the mSL/FHS layout layer: logging, persisted
  * component state, atomic file replacement and subprocess execution.
  */
 #ifndef FHS_H

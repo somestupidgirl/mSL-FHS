@@ -3,7 +3,7 @@
  *
  * fhsxd.c
  *
- * The mSL/XNU layout daemon.
+ * The mSL/FHS layout daemon.
  *
  * Everything the layer does can be driven by hand with fhsctl; this daemon
  * exists to do it at the right moments. It has three jobs:

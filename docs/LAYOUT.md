@@ -4,6 +4,9 @@ The per-directory specification for the mSL/FHS layout layer: what each path
 means on Linux, what backs it on macOS, how it is produced, and what it costs to
 switch on and off.
 
+mSL/FHS is the filesystem-layout module of [mSL/XNU](../README.md), a modular
+macOS Subsystem for Linux; this document covers the layout only.
+
 The guiding rule throughout is **fidelity to what a Linux system actually does**,
 not to what the layout superficially resembles. Where the two conflict, the
 former wins — including when that means a directory stays empty.

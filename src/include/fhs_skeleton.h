@@ -10,7 +10,7 @@
  * and it is parsed exactly once per boot by apfs_boot_util - which means every
  * change here takes effect only after a restart.
  *
- * mSL/XNU uses the symlink form exclusively:
+ * mSL/FHS uses the symlink form exclusively:
  *
  *     mnt<TAB>/System/Volumes/Data/mnt
  *
