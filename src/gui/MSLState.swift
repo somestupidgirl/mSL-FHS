@@ -23,17 +23,32 @@ import Foundation
 
 let kMslctl = "/usr/local/sbin/mslctl"
 
-/// The three components, in the order they are presented.
+/// The components mSL/XNU can switch on and off, in the order they are
+/// presented. The first three each have real work behind them; the last three
+/// are skeleton entries only.
 enum Component: String, CaseIterable {
-    case home, mnt, media
+    case home, mnt, media, root, run, srv
 
     var path: String { "/" + rawValue }
 
     var summary: String {
         switch self {
         case .home:  return "Linux-style /home/<user> paths"
-        case .mnt:   return "/mnt, an empty directory"
+        case .mnt:   return "Scratch space for manual mounts"
         case .media: return "Removable volumes under /media/<user>"
+        case .root:  return "The superuser's home directory"
+        case .run:   return "Runtime state — pid files and sockets"
+        case .srv:   return "Data served by this system"
+        }
+    }
+
+    /// For the nodes that expose content macOS already has, the path that
+    /// content really lives at. nil when the component owns its own directory.
+    var exposes: String? {
+        switch self {
+        case .root: return "/var/root"
+        case .run:  return "/var/run"
+        default:    return nil
         }
     }
 
@@ -150,6 +165,18 @@ struct MSLState {
             if stale > 0 { return "\(int("media.links")) links, \(stale) stale" }
             let vols = int("media.volumes")
             return vols == 0 ? "No removable volumes" : "\(vols) volume(s)"
+
+        case .root, .run:
+            // A target that has gone is worth surfacing: the entry would
+            // dangle rather than simply be absent.
+            let target = c.exposes ?? ""
+            if flag("\(c.rawValue).target_missing") {
+                return "Target \(target) is missing"
+            }
+            return "Shows \(target)"
+
+        case .srv:
+            return "Empty, as on Linux"
         }
     }
 
