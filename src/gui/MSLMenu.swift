@@ -86,10 +86,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let loginItem = addAction(menu, "Open at Login", #selector(toggleLoginItem))
             loginItem.state = loginEnabled ? .on : .off
         }
+        // Both symbols go in the image column. macOS gives terminate: an exit
+        // symbol there on its own, so Quit's is set explicitly too - relying on
+        // the automatic one would leave its size and position outside our
+        // control, and the two rows have to match.
         menu.addItem(.separator())
-        addAction(menu, "About mSL/XNU", #selector(showAbout))
-        addAction(menu, "Quit", #selector(NSApplication.terminate(_:)),
-                  target: NSApp, key: "q")
+        let aboutItem = addAction(menu, "About mSL/XNU", #selector(showAbout))
+        setImageSymbol(aboutItem, "info.circle")
+        let quitItem = addAction(menu, "Quit", #selector(NSApplication.terminate(_:)),
+                                 target: NSApp, key: "q")
+        setImageSymbol(quitItem, "power")
     }
 
     /// One directory row: a coloured dot, the path, and a dropdown.
@@ -176,6 +182,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// intended design.
     private func dot(_ on: Bool) -> String {
         on ? "🟢" : "🔴"
+    }
+
+    /// Load an SF Symbol sized and tinted for a menu row.
+    private func menuSymbol(_ symbol: String, pointSize: CGFloat) -> NSImage? {
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        else { return nil }
+        let sized = image.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)) ?? image
+        sized.isTemplate = true     // tint with the menu, including when highlighted
+        return sized
+    }
+
+    /// Put a symbol in an item's *image* column, which sits between the state
+    /// column and the title.
+    ///
+    /// Recent macOS fills this column in by itself for standard actions -
+    /// terminate: acquires an exit symbol with no help from us. An item whose
+    /// symbol went in the state column would therefore sit in a different
+    /// column from its neighbour and be visibly out of line, so items grouped
+    /// with such an action set their symbol here and match.
+    private func setImageSymbol(_ item: NSMenuItem, _ symbol: String) {
+        item.image = menuSymbol(symbol, pointSize: 14)
     }
 
     private func addDisabled(_ menu: NSMenu, _ title: String) {
