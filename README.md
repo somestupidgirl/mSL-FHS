@@ -58,7 +58,7 @@ two:
 
 | Tier | What it is | When it changes | In the toggle? |
 |------|------------|-----------------|----------------|
-| **Skeleton** | The root-level entries themselves (`/home`, `/mnt`, `/media`, …), created as symlinks into the writable Data volume via `synthetic.conf` | Install time only; **requires a reboot** | No |
+| **Skeleton** | The root-level entries themselves (`/home`, `/mnt`, `/media`, …), created as symlinks by `synthetic.conf` | Install time only; **requires a reboot** | No |
 | **Contents** | What lives inside them — the per-user and per-volume symlinks, maintained by `mslxd` | Continuously, at runtime | Yes |
 
 The skeleton is inert. A `/media` symlink pointing at an empty directory is
@@ -74,7 +74,7 @@ installer states it plainly.
 
 ### Symlink farms, not mounts
 
-Every component is a directory on the writable Data volume, reached through a
+Most components are a directory on the writable Data volume, reached through a
 symlink at `/`, whose contents are symlinks maintained by the daemon:
 
 ```
@@ -97,6 +97,10 @@ This was chosen over the more obvious alternatives:
   cost because they genuinely must synthesise content in the kernel. This layer
   does not.
 
+`/root` and `/run` are simpler still: their symlink points straight at the
+macOS directory that already holds the content, so there is nothing beneath them
+to maintain at all.
+
 Symlinks are boring, inspectable with `ls -l`, removable without privilege
 escalation, and leave nothing behind when deleted.
 
@@ -110,6 +114,16 @@ full per-directory semantics.
 | `home` | `/home/<user>` → `/Users/<user>` | One symlink per local user | Also masks the `auto_home` automounter map |
 | `mnt` | `/mnt` | Nothing — the administrator mounts into it | Reported, never mounted by mSL |
 | `media` | `/media/<user>/<label>` → `/Volumes/<label>` | DiskArbitration events, live | Removable media only; filtered and user-attributed |
+| `root` | `/root` → `/var/root` | — | Names existing content; creates nothing |
+| `run` | `/run` → `/var/run` | — | Names existing content; creates nothing |
+| `srv` | `/srv` | Nothing — stays empty | Empty on most Linux systems too |
+
+`/root` and `/run` are the cheapest components here and the most honest: macOS
+already keeps the superuser's home at `/var/root` and runtime state at
+`/var/run`, which is exactly what Linux calls `/root` and `/run`. The entry
+gives that content the name Linux uses and creates no second copy — so there is
+nothing to synchronise and nothing that can drift. `ls /run` lists the pid files
+and sockets the system is actually using.
 
 `/mnt` staying empty is not an unimplemented feature. The FHS defines it as
 scratch space for *temporary, manual* mounts (`mkdir /mnt/disk1 && mount
@@ -251,6 +265,8 @@ Working, and verified on macOS 26.5.2 (Tahoe), Darwin 25.5.0, Apple Silicon.
 | `/home` | **Working** — survives reboot via its own `synthetic.conf` entry |
 | `/mnt` | **Working** — reports filesystems mounted under it |
 | `/media` | **Working** — tracks volumes live through DiskArbitration |
+| `/root` `/run` | **Working** — name the existing `/var/root` and `/var/run` |
+| `/srv` | **Working** — empty, as on Linux |
 | Finder visibility | **Working** — for the nodes macOS permits; see below |
 | `mslctl` | **Working** — CLI control for the layer |
 | `mslxd` | **Working** — boot restore, live volume tracking, console-user changes |

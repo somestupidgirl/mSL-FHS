@@ -17,9 +17,9 @@ former wins — including when that means a directory stays empty.
 | `/media/<user>/<label>` | Removable media, per session | `/Volumes/<label>`, filtered | Symlink farm from DiskArbitration | Yes | **Working** |
 | `/proc` | Process pseudo-filesystem | — | External kext; **detected only** | n/a | **Working** (detection) |
 | `/sys` | Kernel object pseudo-filesystem | — | External; **detected only** | n/a | **Working** (detection) |
-| `/root` | Superuser home | `/var/root` | Skeleton symlink | No (skeleton) | Future |
-| `/run` | Runtime state | `/var/run` | Skeleton symlink | No (skeleton) | Future |
-| `/srv` | Service data | — | Skeleton empty symlink target | No (skeleton) | Future |
+| `/root` | Superuser home | `/var/root` | Skeleton symlink to existing content | Yes | **Working** |
+| `/run` | Runtime state | `/var/run` | Skeleton symlink to existing content | Yes | **Working** |
+| `/srv` | Data served by this system | — | Skeleton symlink; stays empty | Yes | **Working** |
 | `/opt` | Optional packages | `/opt` | **Already exists**; visibility changeable | — | Nothing to do |
 | `/bin` `/sbin` `/usr` `/etc` `/dev` `/tmp` `/var` | Standard UNIX | Themselves | **Already correct**; visibility locked | — | Nothing to do |
 
@@ -46,20 +46,27 @@ name                    # creates an EMPTY DIRECTORY in the read-only
 name<TAB>/abs/target    # creates a SYMLINK to an absolute path
 ```
 
-Because the first form is read-only, mSL/XNU uses the second exclusively,
-pointing each entry at the writable Data volume:
+Because the first form is read-only, mSL/XNU uses the second exclusively:
 
 ```
 home	/System/Volumes/Data/home
 mnt	/System/Volumes/Data/mnt
 media	/System/Volumes/Data/media
+srv	/System/Volumes/Data/srv
+root	/var/root
+run	/var/run
 ```
 
-This mirrors what macOS itself does for `/home` — which is a symlink to
+Most entries point at a directory of the same name on the writable Data volume —
+an ordinary writable directory the layer owns, whose contents the daemon
+maintains with nothing more than `symlink(2)` and `unlink(2)`. This mirrors what
+macOS itself does for `/home`, which is a symlink to
 `/System/Volumes/Data/home`, created at boot by autofs rather than shipped in
-the system image. The targets are ordinary writable directories, so the daemon
-can maintain their contents with nothing more than `symlink(2)` and
-`unlink(2)`.
+the system image.
+
+The last two are different in kind: they point at directories macOS already has,
+so the entry is a new name for existing content rather than a new place to put
+things. See [`/root`, `/run` and `/srv`](#root-run-and-srv).
 
 Constraints worth knowing:
 
@@ -68,8 +75,11 @@ Constraints worth knowing:
   `/home` is the instructive case: it *looks* like it already exists, but is
   created each boot by autofs from a map this layer masks, so it does need an
   entry of its own. See [`/home`](#home).
-- The target of a symlink entry is not created for you. The installer must
-  create the Data-volume directories before the reboot that activates them.
+- The target of a symlink entry is not created for you. For an entry the layer
+  owns, the component creates the Data-volume directory before the reboot that
+  activates it. For an entry naming existing content, the target must already
+  exist and is **never** created — the declaration is refused instead, so a
+  symlink at `/` cannot be left dangling.
 - The file is consumed at boot only. There is no daemon, no reload, and no
   supported override; a new root-level directory always costs a restart.
 
@@ -320,6 +330,71 @@ Where no console user exists — mounts during boot, or over SSH with nobody
 logged in — the volume is attributed to the console user when one next appears,
 rather than being dropped.
 
+## `/root`, `/run` and `/srv`
+
+Three nodes that are nothing but a skeleton entry. `/home`, `/mnt` and `/media`
+each have real work behind them — an automounter to mask, mounts to report,
+volumes to track — and are their own components; these differ only in a name and
+a target, so they share one table-driven implementation.
+
+| Path | Target | What it is |
+|------|--------|------------|
+| `/root` | `/var/root` | The superuser's home directory |
+| `/run` | `/var/run` | Runtime state — pid files, sockets |
+| `/srv` | `/System/Volumes/Data/srv` | Data served by this system; empty |
+
+### Naming existing content
+
+`/root` and `/run` are the interesting ones, and they work differently from
+every other component here: **they create no new storage.** macOS already has
+the superuser's home at `/var/root` and runtime state at `/var/run` — the same
+things Linux calls `/root` and `/run`. The entry gives existing content the name
+Linux uses, and nothing else. `ls /run` lists the live pid files and sockets the
+system is actually using.
+
+This is the layer at its cheapest and most honest: no synchronisation, no
+daemon involvement, no second copy that could drift.
+
+`/srv` has no macOS equivalent. It is an ordinary empty directory on the Data
+volume, which is what `/srv` is on most Linux systems too — the FHS reserves it
+for site-specific served data, and nothing populates it automatically.
+
+### Never taking ownership of a system directory
+
+Pointing at a macOS directory required a rule the skeleton did not previously
+need. Every earlier entry pointed at `MSL_DATA_ROOT/<name>`, which the layer
+creates and owns, so the skeleton simply created its target. `mkdir`-ing over
+`/var/root` would be a different act entirely: taking possession of a directory
+that is macOS's, with its own ownership and modes (`/var/root` is `0750`,
+root-only — as `/root` is on Linux).
+
+So the skeleton now takes an explicit `create_target` flag, and:
+
+- a node that owns its target creates it, as before;
+- a node that points at existing content **never** creates it, and its
+  declaration is **refused** if the target is missing rather than left to
+  dangle.
+
+The test suite asserts this structurally rather than by inspection: any node
+marked as creating its target must have that target under the layer's own
+Data-volume path.
+
+For `/srv`, a missing target while the component is disabled is simply the
+state before it is switched on, so only a node depending on an existing
+directory — or an enabled `/srv` — reports a missing target as a fault.
+
+### Verified behaviour
+
+Confirmed across a reboot on macOS 26.5.2:
+
+- All three appear at `/`, and all report `active`, with no reboot pending.
+- `/root` resolves to the real `/var/root`, mode `0750`.
+- `/run` lists live runtime state.
+- `/srv` is present and empty.
+- **A target behind another symlink resolves.** `/run` → `/var/run`, and `/var`
+  is itself a symlink to `/private/var`. `synthetic.conf` stores the target as
+  text and the kernel resolves it at use, so the double indirection is invisible.
+
 ## Finder visibility
 
 A separate axis from the layout: not *which* directories exist, but which of
@@ -424,18 +499,3 @@ node — `/opt` can be shown, `/bin` and the rest cannot. See
 
 Either way this affects exactly one application's presentation and nothing
 else: every shell, script, and program already sees these paths normally.
-
-## Future entries
-
-Cheap to add once the pattern is proven, each needing a skeleton entry and
-therefore a reboot:
-
-| Path | Target | Note |
-|------|--------|------|
-| `/root` | `/var/root` | The macOS superuser home already is `/var/root` |
-| `/run` | `/var/run` | Already exists as a real directory with the expected contents |
-| `/srv` | empty | Empty on most Linux systems too |
-
-`/lib` and `/lib64` are deliberately **not** planned. macOS has no ELF loader and
-no shared libraries at those paths; presenting the directory without usable
-contents would be a layout that lies about what the system can run.
