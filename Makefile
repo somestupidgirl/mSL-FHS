@@ -269,9 +269,18 @@ install: require-root require-built
 	      launchctl asuser "$$uid" sudo -u "$$u" open "$(APP_DIR)/mSL.app" >/dev/null 2>&1 || true; \
 	  fi
 	@echo "mSL: installed mslctl, mslxd, mSL.app and mSL.prefPane; daemon started."
-	@echo "mSL: nothing is enabled yet. To turn on the /home component:"
-	@echo "         sudo mslctl home check     # confirm it is safe"
-	@echo "         sudo mslctl home enable"
+	@# Only claim nothing is enabled when that is actually true. A reinstall
+	@# over a configured system left the old message telling the user to turn
+	@# on components they had already turned on.
+	@if $(SBIN_DIR)/mslctl porcelain 2>/dev/null | grep -q '\.enabled=1'; then \
+		echo "mSL: your enabled components are unchanged. Review them with:"; \
+		echo "         mslctl status"; \
+	else \
+		echo "mSL: nothing is enabled yet. Turn components on in"; \
+		echo "     System Settings -> mSL/XNU, or from the command line:"; \
+		echo "         sudo mslctl home check     # confirm /home is safe to enable"; \
+		echo "         sudo mslctl home enable"; \
+	fi
 
 # Turn the layer off before removing the tool that knows how to turn it off:
 # leaving a masked /etc/auto_master behind with no way to restore it would be a
